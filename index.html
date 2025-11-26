@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Учет времени производства столешниц</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔧 Учет времени производства</h1>
+            <p class="subtitle">Система расчета и контроля времени изготовления столешниц</p>
+        </header>
+
+        <!-- Навигация по вкладкам -->
+        <nav class="tabs">
+            <button class="tab-btn active" data-tab="calculation">📊 Расчет</button>
+            <button class="tab-btn" data-tab="tracking">⏱️ Учет времени</button>
+            <button class="tab-btn" data-tab="analysis">📈 Анализ</button>
+        </nav>
+
+        <!-- Вкладка: Расчет теоретического времени -->
+        <section id="calculation" class="tab-content active">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Параметры заказа</h2>
+                </div>
+                <div class="card-body">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="orderNumber">Номер заказа</label>
+                            <input type="text" id="orderNumber" placeholder="Введите номер">
+                        </div>
+                        <div class="form-group">
+                            <label for="orderDate">Дата</label>
+                            <input type="date" id="orderDate">
+                        </div>
+                        <div class="form-group">
+                            <label for="ordersCount">Количество заказов</label>
+                            <input type="number" id="ordersCount" value="1" min="1">
+                            <small class="hint">Ставка: <span id="currentRate">700</span> руб/час</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2>Операции</h2>
+                    <div class="header-actions">
+                        <button class="btn btn-secondary" id="clearForm">🗑️ Очистить</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="operations-table">
+                            <thead>
+                                <tr>
+                                    <th class="col-num">№</th>
+                                    <th class="col-name">Операция</th>
+                                    <th class="col-unit">Ед.</th>
+                                    <th class="col-norm">Норма</th>
+                                    <th class="col-volume">Объем</th>
+                                    <th class="col-time">Время (мин)</th>
+                                    <th class="col-auto-cost">Авто (₽)</th>
+                                    <th class="col-manual-cost">Вручную (₽)</th>
+                                    <th class="col-final">Итого (₽)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="operationsTable">
+                                <!-- Операции генерируются через JS -->
+                            </tbody>
+                            <tfoot>
+                                <tr class="totals-row">
+                                    <td colspan="5" class="text-right"><strong>ИТОГО:</strong></td>
+                                    <td id="totalTime">0</td>
+                                    <td id="totalAutoCost">0</td>
+                                    <td id="totalManualCost">0</td>
+                                    <td id="totalFinalCost">0</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card summary-card">
+                <div class="card-body">
+                    <div class="summary-grid">
+                        <div class="summary-item">
+                            <span class="summary-label">Общее время</span>
+                            <span class="summary-value" id="summaryTime">0 ч 0 мин</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Автоматическая стоимость</span>
+                            <span class="summary-value" id="summaryAutoCost">0 ₽</span>
+                        </div>
+                        <div class="summary-item highlight">
+                            <span class="summary-label">Итоговая стоимость</span>
+                            <span class="summary-value" id="summaryFinalCost">0 ₽</span>
+                        </div>
+                    </div>
+                    <div class="actions">
+                        <button class="btn btn-primary" id="saveCalculation">💾 Сохранить расчет</button>
+                        <button class="btn btn-secondary" id="loadCalculation">📂 Загрузить</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Вкладка: Учет фактического времени -->
+        <section id="tracking" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Фиксация работы мастеров</h2>
+                </div>
+                <div class="card-body">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="masterName">Мастер</label>
+                            <input type="text" id="masterName" placeholder="ФИО мастера">
+                        </div>
+                        <div class="form-group">
+                            <label for="trackingOrder">Заказ</label>
+                            <select id="trackingOrder">
+                                <option value="">Выберите заказ</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="trackingOperation">Операция</label>
+                            <select id="trackingOperation">
+                                <option value="">Выберите операцию</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card timer-card">
+                <div class="card-body">
+                    <div class="timer-display">
+                        <span id="timerHours">00</span>:<span id="timerMinutes">00</span>:<span id="timerSeconds">00</span>
+                    </div>
+                    <div class="timer-controls">
+                        <button class="btn btn-success btn-large" id="startTimer">▶️ Старт</button>
+                        <button class="btn btn-warning btn-large" id="pauseTimer" disabled>⏸️ Пауза</button>
+                        <button class="btn btn-danger btn-large" id="stopTimer" disabled>⏹️ Стоп</button>
+                    </div>
+                    <div class="manual-time-entry">
+                        <h4>Или введите время вручную:</h4>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="manualHours">Часы</label>
+                                <input type="number" id="manualHours" min="0" value="0">
+                            </div>
+                            <div class="form-group">
+                                <label for="manualMinutes">Минуты</label>
+                                <input type="number" id="manualMinutes" min="0" max="59" value="0">
+                            </div>
+                            <div class="form-group">
+                                <button class="btn btn-primary" id="addManualTime">➕ Добавить</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2>Журнал работ</h2>
+                    <div class="header-actions">
+                        <button class="btn btn-secondary" id="clearWorkLog">🗑️ Очистить</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="work-log-table">
+                            <thead>
+                                <tr>
+                                    <th>Дата/Время</th>
+                                    <th>Заказ</th>
+                                    <th>Операция</th>
+                                    <th>Мастер</th>
+                                    <th>Время</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody id="workLogTable">
+                                <tr class="empty-row">
+                                    <td colspan="6">Нет записей</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Вкладка: Анализ отклонений -->
+        <section id="analysis" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Сравнение теории и факта</h2>
+                    <div class="header-actions">
+                        <select id="analysisOrder">
+                            <option value="">Все заказы</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="analysis-summary">
+                        <div class="analysis-card theory">
+                            <h3>Теоретическое время</h3>
+                            <div class="analysis-value" id="analysisTheoryTime">0 мин</div>
+                        </div>
+                        <div class="analysis-card fact">
+                            <h3>Фактическое время</h3>
+                            <div class="analysis-value" id="analysisFactTime">0 мин</div>
+                        </div>
+                        <div class="analysis-card deviation">
+                            <h3>Отклонение</h3>
+                            <div class="analysis-value" id="analysisDeviation">0%</div>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="analysis-table">
+                            <thead>
+                                <tr>
+                                    <th>Операция</th>
+                                    <th>Теория (мин)</th>
+                                    <th>Факт (мин)</th>
+                                    <th>Отклонение</th>
+                                    <th>Статус</th>
+                                </tr>
+                            </thead>
+                            <tbody id="analysisTable">
+                                <tr class="empty-row">
+                                    <td colspan="5">Нет данных для анализа</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2>Экспорт данных</h2>
+                </div>
+                <div class="card-body">
+                    <div class="export-buttons">
+                        <button class="btn btn-primary" id="exportJSON">📄 Экспорт JSON</button>
+                        <button class="btn btn-success" id="exportCSV">📊 Экспорт CSV</button>
+                        <button class="btn btn-secondary" id="importData">📥 Импорт данных</button>
+                        <input type="file" id="importFile" accept=".json" style="display: none;">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Модальное окно для загрузки расчетов -->
+        <div class="modal" id="loadModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Сохраненные расчеты</h3>
+                    <button class="modal-close" id="closeModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="saved-calculations-list" id="savedCalculationsList">
+                        <p class="empty-message">Нет сохраненных расчетов</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
