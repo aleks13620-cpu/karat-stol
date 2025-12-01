@@ -94,7 +94,49 @@ CREATE TABLE public.qualification_history (
     initiator text
 );
 
--- Индексы
+-- ============================================================
+-- НОВЫЕ ТАБЛИЦЫ: Справочники ставок, поставщиков и камней
+-- ============================================================
+
+-- Таблица hourly_rates (справочник часовых ставок)
+CREATE TABLE public.hourly_rates (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name text NOT NULL,
+    material_type text NOT NULL,
+    description text,
+    rate_value numeric(10,2) NOT NULL,
+    is_default boolean NOT NULL DEFAULT false,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Таблица stone_suppliers (поставщики камня)
+CREATE TABLE public.stone_suppliers (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name text NOT NULL UNIQUE,
+    is_active boolean NOT NULL DEFAULT true,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Таблица stones (каталог камней)
+CREATE TABLE public.stones (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    supplier_id uuid NOT NULL REFERENCES public.stone_suppliers(id),
+    name text NOT NULL,
+    material_type text NOT NULL DEFAULT 'acrylic',
+    hourly_rate_id uuid REFERENCES public.hourly_rates(id),
+    complexity_level text,
+    is_active boolean NOT NULL DEFAULT true,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Расширение таблицы orders: добавление связи с камнем
+ALTER TABLE public.orders
+ADD COLUMN stone_id uuid REFERENCES public.stones(id);
+
+-- ============================================================
+-- ИНДЕКСЫ
+-- ============================================================
+
 CREATE INDEX idx_order_parameters_order_id ON public.order_parameters(order_id);
 CREATE INDEX idx_order_operations_order_id ON public.order_operations(order_id);
 CREATE INDEX idx_order_operations_operation_id ON public.order_operations(operation_id);
@@ -103,7 +145,17 @@ CREATE INDEX idx_order_execution_master_id ON public.order_execution(master_id);
 CREATE INDEX idx_pauses_order_execution_id ON public.pauses(order_execution_id);
 CREATE INDEX idx_qualification_history_master_id ON public.qualification_history(master_id);
 
--- Триггеры для updated_at
+-- Индексы для новых таблиц
+CREATE INDEX idx_stones_supplier_id ON public.stones(supplier_id);
+CREATE INDEX idx_stones_hourly_rate_id ON public.stones(hourly_rate_id);
+CREATE INDEX idx_orders_stone_id ON public.orders(stone_id);
+CREATE INDEX idx_hourly_rates_material_type ON public.hourly_rates(material_type);
+CREATE INDEX idx_hourly_rates_is_default ON public.hourly_rates(is_default);
+
+-- ============================================================
+-- ТРИГГЕРЫ для updated_at
+-- ============================================================
+
 CREATE OR REPLACE FUNCTION public.set_current_timestamp_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
