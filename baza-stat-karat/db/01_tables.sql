@@ -95,6 +95,21 @@ CREATE TABLE public.qualification_history (
 );
 
 -- ============================================================
+-- СПРАВОЧНИК: Технологические операции производства
+-- ============================================================
+
+-- Таблица process_operations (справочник технологических операций)
+CREATE TABLE public.process_operations (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    code text NOT NULL UNIQUE,
+    name text NOT NULL,
+    description text,
+    material_type text NOT NULL DEFAULT 'acrylic',
+    is_active boolean NOT NULL DEFAULT true,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- ============================================================
 -- НОВЫЕ ТАБЛИЦЫ: Справочники ставок, поставщиков и камней
 -- ============================================================
 
@@ -144,6 +159,10 @@ CREATE INDEX idx_order_execution_order_id ON public.order_execution(order_id);
 CREATE INDEX idx_order_execution_master_id ON public.order_execution(master_id);
 CREATE INDEX idx_pauses_order_execution_id ON public.pauses(order_execution_id);
 CREATE INDEX idx_qualification_history_master_id ON public.qualification_history(master_id);
+
+-- Индексы для process_operations
+CREATE UNIQUE INDEX idx_process_operations_code ON public.process_operations(code);
+CREATE INDEX idx_process_operations_material_type ON public.process_operations(material_type);
 
 -- Индексы для новых таблиц
 CREATE INDEX idx_stones_supplier_id ON public.stones(supplier_id);
