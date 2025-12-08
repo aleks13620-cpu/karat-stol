@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Учет времени производства столешниц</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔧 Учет времени производства</h1>
+            <p class="subtitle">Система расчета и контроля времени изготовления столешниц</p>
+        </header>
+
+        <!-- Навигация по вкладкам -->
+        <nav class="tabs">
+            <button class="tab-btn active" data-tab="calculation">📊 Расчет</button>
+            <button class="tab-btn" data-tab="tracking">⏱️ Учет времени</button>
+            <button class="tab-btn" data-tab="analysis">📈 Анализ</button>
+            <button class="tab-btn" data-tab="worklog">📋 Журнал работ</button>
+            <button class="tab-btn" data-tab="admin">⚙️ Админка</button>
+        </nav>
+
+        <!-- Вкладка: Расчет теоретического времени -->
+        <section id="calculation" class="tab-content active">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Параметры заказа</h2>
+                </div>
+                <div class="card-body">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="orderNumber">Номер заказа</label>
+                            <input type="text" id="orderNumber" placeholder="Введите номер">
+                        </div>
+                        <div class="form-group">
+                            <label for="orderDate">Дата</label>
+                            <input type="date" id="orderDate">
+                        </div>
+                        <div class="form-group">
+                            <label for="stoneSelect">Камень</label>
+                            <select id="stoneSelect">
+                                <option value="">Выберите камень</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="ordersCount">Количество заказов</label>
+                            <input type="number" id="ordersCount" value="1" min="1">
+                            <small class="hint">Ставка: <span id="currentRate">700</span> руб/час</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="sinkType">Тип мойки</label>
+                            <select id="sinkType">
+                                <option value="">— нет мойки —</option>
+                                <option value="ВН">ВН</option>
+                                <option value="К0">К0</option>
+                                <option value="КГ">КГ</option>
+                                <option value="КГР">КГР</option>
+                                <option value="КР">КР</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="drainType">Слив</label>
+                            <select id="drainType">
+                                <option value="">— слив не выбран —</option>
+                                <option value="client">Слив клиента</option>
+                                <option value="cheap">Наш слив — дешёвый</option>
+                                <option value="expensive">Наш слив — дорогой</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2>Операции</h2>
+                    <div class="header-actions">
+                        <button class="btn btn-secondary" id="clearForm">🗑️ Очистить</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="operations-table">
+                            <thead>
+                                <tr>
+                                    <th class="col-num">№</th>
+                                    <th class="col-name">Операция</th>
+                                    <th class="col-unit">Ед.</th>
+                                    <th class="col-norm">Норма</th>
+                                    <th class="col-volume">Объем</th>
+                                    <th class="col-time">Время (мин)</th>
+                                    <th class="col-auto-cost">Авто (₽)</th>
+                                    <th class="col-manual-cost">Вручную (₽)</th>
+                                    <th class="col-final">Итого (₽)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="operationsTable">
+                                <!-- Операции генерируются через JS -->
+                            </tbody>
+                            <tfoot>
+                                <tr class="totals-row">
+                                    <td colspan="5" class="text-right"><strong>ИТОГО:</strong></td>
+                                    <td id="totalTime">0</td>
+                                    <td id="totalAutoCost">0</td>
+                                    <td id="totalManualCost">0</td>
+                                    <td id="totalFinalCost">0</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card summary-card">
+                <div class="card-body">
+                    <div class="summary-grid">
+                        <div class="summary-item">
+                            <span class="summary-label">Общее время</span>
+                            <span class="summary-value" id="summaryTime">0 ч 0 мин</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Автоматическая стоимость</span>
+                            <span class="summary-value" id="summaryAutoCost">0 ₽</span>
+                        </div>
+                        <div class="summary-item highlight">
+                            <span class="summary-label">Итоговая стоимость</span>
+                            <span class="summary-value" id="summaryFinalCost">0 ₽</span>
+                        </div>
+                    </div>
+                    <div class="actions">
+                        <button class="btn btn-primary" id="saveCalculation">💾 Сохранить расчет</button>
+                        <button class="btn btn-secondary" id="loadCalculation">📂 Загрузить</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Вкладка: Учет фактического времени -->
+        <section id="tracking" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Фиксация работы мастеров</h2>
+                </div>
+                <div class="card-body">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="workMasterSelect">Мастер</label>
+                            <select id="workMasterSelect">
+                                <option value="">Выберите мастера</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="trackingOrder">Заказ</label>
+                            <input
+                                type="text"
+                                id="trackingOrderSearch"
+                                placeholder="Поиск по номеру заказа..."
+                                style="margin-bottom: 8px;"
+                            >
+                            <select id="trackingOrder" size="5">
+                                <option value="">Выберите заказ</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card timer-card">
+                <div class="card-body">
+                    <div class="timer-display">
+                        <span id="timerHours">00</span>:<span id="timerMinutes">00</span>:<span id="timerSeconds">00</span>
+                    </div>
+                    <div class="pause-time-display">
+                        Паузы: <span id="pauseTimeDisplay">00:00</span>
+                    </div>
+                    <div class="form-group" style="margin: 15px 0;">
+                        <label for="pauseReasonInput">Причина паузы:</label>
+                        <input type="text" id="pauseReasonInput" placeholder="Укажите причину паузы" style="width: 100%;">
+                    </div>
+                    <div class="timer-controls">
+                        <button class="btn btn-success btn-large" id="startTimer">▶️ Старт</button>
+                        <button class="btn btn-warning btn-large" id="pauseTimer" disabled>⏸️ Пауза</button>
+                        <button class="btn btn-danger btn-large" id="stopTimer" disabled>⏹️ Стоп</button>
+                    </div>
+                    <div class="manual-time-entry">
+                        <h4>Или введите время вручную:</h4>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="manualHours">Часы</label>
+                                <input type="number" id="manualHours" min="0" value="0">
+                            </div>
+                            <div class="form-group">
+                                <label for="manualMinutes">Минуты</label>
+                                <input type="number" id="manualMinutes" min="0" max="59" value="0">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="manualPauseMinutes">Время пауз (мин)</label>
+                                <input type="number" id="manualPauseMinutes" min="0" value="0">
+                            </div>
+                            <div class="form-group">
+                                <label for="manualPauseReason">Причина паузы</label>
+                                <input type="text" id="manualPauseReason" placeholder="Опционально">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <button class="btn btn-primary" id="addManualTime">➕ Добавить</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Таблица активных работ -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Активные работы</h2>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="active-sessions-table">
+                            <thead>
+                                <tr>
+                                    <th>Мастер</th>
+                                    <th>Заказ</th>
+                                    <th>Рабочее время</th>
+                                    <th>Паузы</th>
+                                    <th>Статус</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody id="activeSessionsTable">
+                                <tr class="empty-row">
+                                    <td colspan="6">Нет активных работ</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2>Журнал работ</h2>
+                    <div class="header-actions">
+                        <button class="btn btn-secondary" id="clearWorkLog">🗑️ Очистить</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="work-log-table">
+                            <thead>
+                                <tr>
+                                    <th>Дата/Время</th>
+                                    <th>Заказ</th>
+                                    <th>Мастер</th>
+                                    <th>Время</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody id="workLogTable">
+                                <tr class="empty-row">
+                                    <td colspan="5">Нет записей</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Вкладка: Анализ отклонений -->
+        <section id="analysis" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Сравнение теории и факта</h2>
+                    <div class="header-actions">
+                        <select id="analysisOrder">
+                            <option value="">Все заказы</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Панель фильтров -->
+                <div class="analysis-filters" id="analysisFilters">
+                    <div class="filter-group">
+                        <label for="analysisDateFrom">С:</label>
+                        <input type="date" id="analysisDateFrom">
+                    </div>
+                    <div class="filter-group">
+                        <label for="analysisDateTo">По:</label>
+                        <input type="date" id="analysisDateTo">
+                    </div>
+                    <div class="filter-group">
+                        <label for="analysisMasterSelect">Мастер:</label>
+                        <select id="analysisMasterSelect">
+                            <option value="">Все мастера</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary" id="analysisApplyFiltersButton">Применить</button>
+                    <button class="btn btn-secondary" id="analysisClearFiltersButton">Сбросить</button>
+                </div>
+
+                <div class="card-body">
+                    <div class="analysis-summary">
+                        <div class="analysis-card theory">
+                            <h3>Теоретическое время</h3>
+                            <div class="analysis-value" id="analysisTheoryTime">0 мин</div>
+                        </div>
+                        <div class="analysis-card fact">
+                            <h3>Фактическое время</h3>
+                            <div class="analysis-value" id="analysisFactTime">0 мин</div>
+                        </div>
+                        <div class="analysis-card deviation">
+                            <h3>Отклонение</h3>
+                            <div class="analysis-value" id="analysisDeviation">0%</div>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="analysis-table">
+                            <thead>
+                                <tr>
+                                    <th>Заказ</th>
+                                    <th>Теория (мин)</th>
+                                    <th>Факт (мин)</th>
+                                    <th>Отклонение</th>
+                                    <th>Статус</th>
+                                </tr>
+                            </thead>
+                            <tbody id="analysisTable">
+                                <tr class="empty-row">
+                                    <td colspan="5">Нет данных для анализа</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Статистика по мастерам -->
+            <div class="card" id="mastersStatsSection">
+                <div class="card-header">
+                    <h2>Статистика по мастерам</h2>
+                    <div class="header-actions">
+                        <select id="masterFilter">
+                            <option value="">Все мастера</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <p id="mastersStatsEmpty" class="empty-message" style="display: none;">Нет данных по мастерам.</p>
+                    <div class="table-responsive">
+                        <table class="analysis-table" id="mastersStatsTable">
+                            <thead>
+                                <tr>
+                                    <th class="sortable" data-sort="text" data-column="masterName">Мастер</th>
+                                    <th class="sortable" data-sort="number" data-column="ordersCount">Заказов</th>
+                                    <th class="sortable" data-sort="number" data-column="entries">Записей</th>
+                                    <th class="sortable" data-sort="number" data-column="totalWorkMinutes">Рабочее время (мин)</th>
+                                    <th class="sortable" data-sort="number" data-column="totalPauseMinutes">Время пауз (мин)</th>
+                                    <th class="sortable" data-sort="number" data-column="pauseShare">Доля пауз (%)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Строки генерируются через JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2>Экспорт данных</h2>
+                </div>
+                <div class="card-body">
+                    <div class="export-buttons">
+                        <button class="btn btn-primary" id="exportJSON">📄 Экспорт JSON</button>
+                        <button class="btn btn-success" id="exportCSV">📊 Экспорт CSV</button>
+                        <button class="btn btn-secondary" id="importData">📥 Импорт данных</button>
+                        <input type="file" id="importFile" accept=".json" style="display: none;">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Вкладка: Журнал работ -->
+        <section id="worklog" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Журнал работ</h2>
+                </div>
+
+                <!-- Панель фильтров -->
+                <div class="analysis-filters" id="workLogFilters">
+                    <div class="filter-group">
+                        <label for="workLogDateFrom">С:</label>
+                        <input type="date" id="workLogDateFrom">
+                    </div>
+                    <div class="filter-group">
+                        <label for="workLogDateTo">По:</label>
+                        <input type="date" id="workLogDateTo">
+                    </div>
+                    <div class="filter-group">
+                        <label for="workLogMasterSelect">Мастер:</label>
+                        <select id="workLogMasterSelect">
+                            <option value="">Все мастера</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="workLogOrderSearch">№ Заказа:</label>
+                        <input type="text" id="workLogOrderSearch" placeholder="Z-001">
+                    </div>
+                    <button class="btn btn-primary" id="workLogApplyFiltersButton">Применить</button>
+                    <button class="btn btn-secondary" id="workLogClearFiltersButton">Сбросить</button>
+                </div>
+
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="analysis-table">
+                            <thead>
+                                <tr>
+                                    <th>Дата/Время</th>
+                                    <th>Мастер</th>
+                                    <th>Заказ</th>
+                                    <th>Рабочее время (мин)</th>
+                                    <th>Время пауз (мин)</th>
+                                    <th>Причины пауз</th>
+                                </tr>
+                            </thead>
+                            <tbody id="workLogTableBody">
+                                <tr class="empty-row">
+                                    <td colspan="6">Нет данных</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Вкладка: Админка -->
+        <section id="admin" class="tab-content">
+            <!-- Предупреждение при отсутствии Supabase -->
+            <div class="card" id="adminNoSupabaseWarning" style="display: none;">
+                <div class="card-body">
+                    <div class="alert alert-warning">
+                        <h3>⚠️ Supabase не настроен</h3>
+                        <p>Админ-панель мастеров недоступна. Настройте подключение в localStorage.</p>
+                        <p>Для настройки откройте консоль разработчика и выполните:</p>
+                        <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px;">
+localStorage.setItem('supabaseUrl', 'https://ваш-проект.supabase.co');
+localStorage.setItem('supabaseKey', 'ваш-anon-key');</pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Секция управления мастерами -->
+            <div id="adminMastersSection" style="display: none;">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Управление мастерами</h2>
+                        <div class="header-actions">
+                            <button class="btn btn-primary" id="adminAddMasterBtn">➕ Добавить мастера</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="analysis-table">
+                                <thead>
+                                    <tr>
+                                        <th>Имя мастера</th>
+                                        <th>Уровень квалификации</th>
+                                        <th>Статус</th>
+                                        <th>Дата создания</th>
+                                        <th>Действия</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="adminMastersTable">
+                                    <tr class="empty-row">
+                                        <td colspan="5">Загрузка...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Форма добавления/редактирования мастера -->
+                <div class="card" id="adminMasterFormCard" style="display: none;">
+                    <div class="card-header">
+                        <h2 id="adminMasterFormTitle">Добавить мастера</h2>
+                    </div>
+                    <div class="card-body">
+                        <form id="adminMasterForm">
+                            <input type="hidden" id="adminMasterId">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="adminMasterName">Имя мастера <span style="color: red;">*</span></label>
+                                    <input type="text" id="adminMasterName" required placeholder="Иванов Иван Иванович">
+                                </div>
+                                <div class="form-group">
+                                    <label for="adminMasterQualification">Уровень квалификации</label>
+                                    <input type="number" id="adminMasterQualification" min="1" value="1" required>
+                                    <small class="hint">Целое число, минимум 1</small>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>
+                                        <input type="checkbox" id="adminMasterIsActive" checked>
+                                        Активен
+                                    </label>
+                                    <small class="hint">Неактивные мастера не отображаются в рабочих селектах</small>
+                                </div>
+                            </div>
+                            <div class="actions">
+                                <button type="submit" class="btn btn-primary">💾 Сохранить</button>
+                                <button type="button" class="btn btn-secondary" id="adminMasterFormCancel">Отмена</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Секция управления ставками -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Управление ставками</h2>
+                        <div class="header-actions">
+                            <button class="btn btn-primary" id="adminAddRateBtn">➕ Добавить ставку</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="analysis-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Стоимость (₽/час)</th>
+                                        <th>По умолчанию</th>
+                                        <th>Действия</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="adminRatesTable">
+                                    <tr class="empty-row">
+                                        <td colspan="4">Загрузка...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Форма добавления/редактирования ставки -->
+                <div class="card" id="adminRateFormCard" style="display: none;">
+                    <div class="card-header">
+                        <h2 id="adminRateFormTitle">Добавить ставку</h2>
+                    </div>
+                    <div class="card-body">
+                        <form id="adminRateForm">
+                            <input type="hidden" id="adminRateId">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="adminRateValue">Стоимость (₽/час) <span style="color: red;">*</span></label>
+                                    <input type="number" id="adminRateValue" min="0" step="0.01" required placeholder="700">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>
+                                        <input type="checkbox" id="adminRateIsDefault">
+                                        Использовать по умолчанию
+                                    </label>
+                                    <small class="hint">Ставка по умолчанию используется при расчете новых заказов</small>
+                                </div>
+                            </div>
+                            <div class="actions">
+                                <button type="submit" class="btn btn-primary">💾 Сохранить</button>
+                                <button type="button" class="btn btn-secondary" id="adminRateFormCancel">Отмена</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+<!-- Модальное окно администратора -->
+        <div class="modal" id="adminModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>🔧 Настройки администратора</h3>
+                    <button class="modal-close" id="closeAdminModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="admin-section">
+                        <h4>Подключение к Supabase:</h4>
+                        <div class="form-group">
+                            <label for="supabaseUrl">URL Supabase:</label>
+                            <input type="text" id="supabaseUrl" placeholder="https://ваш-проект.supabase.co">
+                            <small class="hint">Найдите в настройках проекта Supabase</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="supabaseKey">Ключ Supabase (anon key):</label>
+                            <input type="text" id="supabaseKey" placeholder="eyJhbGc...">
+                            <small class="hint">Публичный ключ из настроек API</small>
+                        </div>
+                        <button class="btn btn-secondary" id="testConnection">🔍 Проверить подключение</button>
+                        <div id="connectionStatus"></div>
+                    </div>
+
+                    <div class="admin-section">
+                        <h4>Ставки мастеров:</h4>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="standardRate">Стандартная ставка (₽/час):</label>
+                                <input type="number" id="standardRate" value="700">
+                            </div>
+                            <div class="form-group">
+                                <label for="premiumRate">Премиум ставка (₽/час):</label>
+                                <input type="number" id="premiumRate" value="770">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="admin-section">
+                        <h4>Версия калькулятора:</h4>
+                        <div class="form-group">
+                            <label for="calcVersion">Текущая версия:</label>
+                            <input type="text" id="calcVersion" value="2.0">
+                            <small class="hint">💡 При изменении версии новые заказы будут помечены для раздельной статистики</small>
+                        </div>
+                    </div>
+
+                    <div class="actions">
+                        <button class="btn btn-primary" id="saveAdminSettings">💾 Сохранить настройки</button>
+                        <button class="btn btn-secondary" id="cancelAdminSettings">Отмена</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Модальное окно для загрузки расчетов -->
+        <div class="modal" id="loadModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Сохраненные расчеты</h3>
+                    <button class="modal-close" id="closeModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="saved-calculations-list" id="savedCalculationsList">
+                        <p class="empty-message">Нет сохраненных расчетов</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Модальное окно детализации по мастеру -->
+        <div class="modal" id="masterDetailsModal">
+            <div class="modal-content" style="max-width: 900px;">
+                <div class="modal-header">
+                    <h3 id="masterDetailsTitle">История работ мастера</h3>
+                    <button class="modal-close" id="closeMasterDetailsModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="master-details-summary" id="masterDetailsSummary" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                        <!-- Сводка по мастеру -->
+                    </div>
+                    <div class="table-responsive">
+                        <table class="analysis-table">
+                            <thead>
+                                <tr>
+                                    <th>Дата/Время</th>
+                                    <th>Заказ</th>
+                                    <th>Время (мин)</th>
+                                    <th>Паузы (мин)</th>
+                                    <th>Причины пауз</th>
+                                </tr>
+                            </thead>
+                            <tbody id="masterDetailsTable">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+<!-- Подключение Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="app.js"></script>
+</body>
+</html>
