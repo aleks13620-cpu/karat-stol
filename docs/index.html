@@ -690,6 +690,15 @@ localStorage.setItem('supabaseKey', 'ваш-anon-key');</pre>
     </div>
 <!-- Подключение Supabase -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="app.js"></script>
+
+<!-- Инициализация настроек Supabase -->
+<script>
+    // Сохраняем данные подключения к Supabase в localStorage
+    localStorage.setItem('supabaseUrl', 'https://lpalemqoflzvlkuuroyk.supabase.co');
+    localStorage.setItem('supabaseKey', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxwYWxlbXFvZmx6dmxrdXVyb3lrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQyMTk1MTgsImV4cCI6MjA3OTc5NTUxOH0.KjeAW4mLyAdgNL1w7k0lwMRU_ezy5Arf1UfVbfYzsBE');
+    console.log('Supabase настройки сохранены в localStorage');
+</script>
+
+<script src="app.js"></script>
 </body>
 </html>
