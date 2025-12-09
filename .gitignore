@@ -1,0 +1,13 @@
+# Local backup files
+local-backup/
+
+# Database files
+*.db
+*.sqlite
+
+# Node modules (if used in future)
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
