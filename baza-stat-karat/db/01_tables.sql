@@ -217,3 +217,42 @@ CREATE TRIGGER set_qualification_history_updated_at
     BEFORE UPDATE ON public.qualification_history
     FOR EACH ROW
     EXECUTE FUNCTION public.set_current_timestamp_updated_at();
+
+-- ============================================================
+-- БЛОК 1: Операции акрила (основные 11 операций)
+-- ============================================================
+
+-- Таблица acrylic_operations (справочник основных операций акрила)
+CREATE TABLE public.acrylic_operations (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name text NOT NULL,
+    unit text NOT NULL DEFAULT 'шт',
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Таблица order_acrylic_operations (связь заказов с операциями акрила)
+CREATE TABLE public.order_acrylic_operations (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_id uuid NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
+    operation_id uuid NOT NULL REFERENCES public.acrylic_operations(id),
+    volume numeric(10,2) NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Индексы для новых таблиц
+CREATE INDEX idx_order_acrylic_operations_order_id ON public.order_acrylic_operations(order_id);
+CREATE INDEX idx_order_acrylic_operations_operation_id ON public.order_acrylic_operations(operation_id);
+
+-- Заполнение справочника операций акрила (11 операций)
+INSERT INTO public.acrylic_operations (name, unit) VALUES
+    ('Проверка размеров деталей после ЧПУ', 'шт'),
+    ('Подгонка погонажных деталей', 'шт'),
+    ('Сухая сборка изделия', 'шт'),
+    ('Склейка', 'шт'),
+    ('Уборка излишков клея', 'шт'),
+    ('Фрезеровка запасов', 'шт'),
+    ('Фрезеровка радиусов и кромок', 'шт'),
+    ('Внедрение «дров»', 'шт'),
+    ('Шлифовка', 'шт'),
+    ('Приклейка мойки', 'шт'),
+    ('Упаковка и складирование', 'шт');

@@ -126,6 +126,37 @@ async function loadStones() {
     }
 }
 
+// === БЛОК 1: Загрузка операций акрила из Supabase ===
+async function loadAcrylicOperations() {
+    if (!supabase) {
+        console.warn('Supabase не подключен, используется локальный список операций акрила');
+        return ACRYLIC_OPERATIONS_FALLBACK;
+    }
+
+    try {
+        const { data, error } = await supabase
+            .from('acrylic_operations')
+            .select('id, name, unit')
+            .order('created_at');
+
+        if (error) {
+            console.error('Ошибка загрузки операций акрила из Supabase:', error);
+            return ACRYLIC_OPERATIONS_FALLBACK;
+        }
+
+        if (data && data.length > 0) {
+            console.log(`Загружено операций акрила: ${data.length}`);
+            return data;
+        }
+
+        console.warn('Нет операций акрила в таблице acrylic_operations');
+        return ACRYLIC_OPERATIONS_FALLBACK;
+    } catch (err) {
+        console.error('Ошибка при загрузке операций акрила:', err);
+        return ACRYLIC_OPERATIONS_FALLBACK;
+    }
+}
+
 // === Заполнение селекта камнями ===
 function populateStoneSelect() {
     const stoneSelect = document.getElementById('stoneSelect');
@@ -141,6 +172,50 @@ function populateStoneSelect() {
         option.textContent = stone.name;
         stoneSelect.appendChild(option);
     });
+}
+
+// === БЛОК 1: Заполнение UI операциями акрила ===
+function populateAcrylicOperationsUI(operations) {
+    const container = document.getElementById('acrylicOperationsContainer');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    operations.forEach(op => {
+        // Инициализируем state для каждой операции
+        state.acrylicOperations[op.id] = { checked: false, volume: 1 };
+
+        // Создаём элемент
+        const div = document.createElement('div');
+        div.className = 'acrylic-operation-item';
+        div.innerHTML = `
+            <label>
+                <input type="checkbox" id="acrylicOp_${op.id}" data-op-id="${op.id}">
+                <span>${op.name}</span>
+            </label>
+            <input type="number" id="acrylicVol_${op.id}" min="1" step="1" value="1"
+                   data-op-id="${op.id}" disabled>
+            <span class="unit">${op.unit}</span>
+        `;
+        container.appendChild(div);
+
+        // Обработчик чекбокса
+        const checkbox = div.querySelector('input[type="checkbox"]');
+        const volumeInput = div.querySelector('input[type="number"]');
+
+        checkbox.addEventListener('change', (e) => {
+            const checked = e.target.checked;
+            state.acrylicOperations[op.id].checked = checked;
+            volumeInput.disabled = !checked;
+        });
+
+        volumeInput.addEventListener('input', (e) => {
+            const volume = parseInt(e.target.value) || 1;
+            state.acrylicOperations[op.id].volume = volume;
+        });
+    });
+
+    console.log('[ACRYLIC_OPS] UI инициализирован для', operations.length, 'операций');
 }
 
 // === Конфигурация операций ===
@@ -174,11 +249,27 @@ const MULTI_ORDER_RATE = 770;
 const THICKNESS_THRESHOLD = 40;
 const THICKNESS_EXTRA_PER_MP = 200;
 
+// === БЛОК 1: Константы операций акрила ===
+const ACRYLIC_OPERATIONS_FALLBACK = [
+    { id: 'local-1', name: 'Проверка размеров деталей после ЧПУ', unit: 'шт' },
+    { id: 'local-2', name: 'Подгонка погонажных деталей', unit: 'шт' },
+    { id: 'local-3', name: 'Сухая сборка изделия', unit: 'шт' },
+    { id: 'local-4', name: 'Склейка', unit: 'шт' },
+    { id: 'local-5', name: 'Уборка излишков клея', unit: 'шт' },
+    { id: 'local-6', name: 'Фрезеровка запасов', unit: 'шт' },
+    { id: 'local-7', name: 'Фрезеровка радиусов и кромок', unit: 'шт' },
+    { id: 'local-8', name: 'Внедрение «дров»', unit: 'шт' },
+    { id: 'local-9', name: 'Шлифовка', unit: 'шт' },
+    { id: 'local-10', name: 'Приклейка мойки', unit: 'шт' },
+    { id: 'local-11', name: 'Упаковка и складирование', unit: 'шт' }
+];
+
 // === Состояние приложения ===
 let state = {
     currentRate: 700, // будет обновлено после загрузки из Supabase
     selectedStoneId: null, // ID выбранного камня
     operationValues: {},
+    acrylicOperations: {}, // БЛОК 1: { operation_id: { checked: bool, volume: number } }
     calculations: [],
     workLog: [],
     timer: {
@@ -261,6 +352,10 @@ async function initApp() {
 
     // Загружаем мастеров из Supabase или из локального workLog
     await populateMasterSelect();
+
+    // БЛОК 1: Загружаем операции акрила из Supabase
+    const acrylicOps = await loadAcrylicOperations();
+    populateAcrylicOperationsUI(acrylicOps);
 
     // Обновляем UI с загруженной ставкой
     const currentRateEl = document.getElementById('currentRate');
@@ -672,6 +767,7 @@ async function saveCalculation() {
         sinkType, // Тип мойки
         drainType, // Тип слива
         operations: { ...state.operationValues },
+        acrylicOperations: { ...state.acrylicOperations }, // БЛОК 1: операции акрила
         totalTime,
         totalFinalCost,
         createdAt: new Date().toISOString()
@@ -754,6 +850,34 @@ async function saveCalculation() {
         }
 
         console.log('[SAVE] Параметры заказа сохранены успешно');
+
+        // 5. БЛОК 1: Сохраняем операции акрила в order_acrylic_operations
+        const acrylicOpsPayload = [];
+        for (const [opId, data] of Object.entries(state.acrylicOperations)) {
+            if (data.checked && data.volume > 0) {
+                acrylicOpsPayload.push({
+                    order_id: orderData.id,
+                    operation_id: opId,
+                    volume: parseFloat(data.volume)
+                });
+            }
+        }
+
+        if (acrylicOpsPayload.length > 0) {
+            console.log('[SAVE] Payload для order_acrylic_operations:', acrylicOpsPayload);
+
+            const { error: acrylicOpsError } = await supabase
+                .from('order_acrylic_operations')
+                .insert(acrylicOpsPayload);
+
+            if (acrylicOpsError) {
+                throw new Error(`Ошибка сохранения операций акрила: ${acrylicOpsError.message}`);
+            }
+
+            console.log('[SAVE] Операции акрила сохранены успешно');
+        } else {
+            console.log('[SAVE] Нет выбранных операций акрила для сохранения');
+        }
 
         alert('Расчёт успешно сохранён в базу данных!');
 
