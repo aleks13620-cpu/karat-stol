@@ -24,6 +24,10 @@ let currentHourlyRate = 700; // значение по умолчанию
 // === Переменная для хранения загруженных камней ===
 let availableStones = [];
 
+// === БЛОК 2: Переменные для хранения загруженных данных моек ===
+let loadedSinkTypes = [];
+let loadedSinkExtraOps = [];
+
 // === Начальные мастера для локального режима (когда workLog пустой) ===
 const DEFAULT_LOCAL_MASTERS = [
     { id: null, name: 'Иванов И.И.' },
@@ -157,6 +161,144 @@ async function loadAcrylicOperations() {
     }
 }
 
+// === БЛОК 2: Загрузка типов моек ===
+async function loadSinkTypes() {
+    if (!supabase) {
+        console.warn('Supabase не подключен, используется локальный список типов моек');
+        return SINK_TYPES_FALLBACK;
+    }
+
+    try {
+        const { data, error } = await supabase
+            .from('sink_types')
+            .select('id, code, name')
+            .order('created_at');
+
+        if (error) {
+            console.error('Ошибка загрузки типов моек из Supabase:', error);
+            return SINK_TYPES_FALLBACK;
+        }
+
+        if (data && data.length > 0) {
+            console.log(`Загружено типов моек: ${data.length}`);
+            return data;
+        }
+
+        console.warn('Нет типов моек в таблице sink_types');
+        return SINK_TYPES_FALLBACK;
+    } catch (err) {
+        console.error('Ошибка при загрузке типов моек:', err);
+        return SINK_TYPES_FALLBACK;
+    }
+}
+
+// === БЛОК 2: Загрузка доп. операций моек ===
+async function loadSinkExtraOperations() {
+    if (!supabase) {
+        console.warn('Supabase не подключен, используется локальный список доп. операций моек');
+        return SINK_EXTRA_OPS_FALLBACK;
+    }
+
+    try {
+        const { data, error } = await supabase
+            .from('sink_extra_operations')
+            .select(`
+                id,
+                name,
+                default_price,
+                sink_type_id,
+                sink_types (code)
+            `)
+            .order('created_at');
+
+        if (error) {
+            console.error('Ошибка загрузки доп. операций моек из Supabase:', error);
+            return SINK_EXTRA_OPS_FALLBACK;
+        }
+
+        if (data && data.length > 0) {
+            // Преобразуем данные в нужный формат
+            const operations = data.map(op => ({
+                id: op.id,
+                name: op.name,
+                default_price: op.default_price,
+                sink_type_id: op.sink_type_id,
+                sink_type_code: op.sink_types?.code || null
+            }));
+            console.log(`Загружено доп. операций моек: ${operations.length}`);
+            return operations;
+        }
+
+        console.warn('Нет доп. операций моек в таблице sink_extra_operations');
+        return SINK_EXTRA_OPS_FALLBACK;
+    } catch (err) {
+        console.error('Ошибка при загрузке доп. операций моек:', err);
+        return SINK_EXTRA_OPS_FALLBACK;
+    }
+}
+
+// === БЛОК 2: Заполнение UI доп. операциями моек ===
+function populateSinkOperationsUI(allOperations, sinkTypeCode) {
+    const container = document.getElementById('sinkOperationsContainer');
+    const card = document.getElementById('sinkOperationsCard');
+    if (!container || !card) return;
+
+    // Фильтруем операции по типу мойки
+    const filteredOps = allOperations.filter(op => op.sink_type_code === sinkTypeCode);
+
+    if (filteredOps.length === 0) {
+        card.style.display = 'none';
+        container.innerHTML = '';
+        console.log(`[SINK_OPS] Нет операций для типа мойки: ${sinkTypeCode}`);
+        return;
+    }
+
+    // Показываем карточку
+    card.style.display = 'block';
+    container.innerHTML = '';
+
+    filteredOps.forEach(op => {
+        // Инициализируем state для каждой операции
+        if (!state.sinkOperations[op.id]) {
+            state.sinkOperations[op.id] = { checked: false, price: op.default_price || 0 };
+        }
+
+        // Создаём элемент
+        const div = document.createElement('div');
+        div.className = 'sink-operation-item';
+        div.innerHTML = `
+            <label>
+                <input type="checkbox" id="sinkOp_${op.id}" data-op-id="${op.id}"
+                       ${state.sinkOperations[op.id].checked ? 'checked' : ''}>
+                <span>${op.name}</span>
+            </label>
+            <input type="number" id="sinkPrice_${op.id}" min="0" step="0.01"
+                   value="${state.sinkOperations[op.id].price}"
+                   data-op-id="${op.id}"
+                   ${state.sinkOperations[op.id].checked ? '' : 'disabled'}>
+            <span class="unit">₽</span>
+        `;
+        container.appendChild(div);
+
+        // Обработчик чекбокса
+        const checkbox = div.querySelector('input[type="checkbox"]');
+        const priceInput = div.querySelector('input[type="number"]');
+
+        checkbox.addEventListener('change', (e) => {
+            const checked = e.target.checked;
+            state.sinkOperations[op.id].checked = checked;
+            priceInput.disabled = !checked;
+        });
+
+        priceInput.addEventListener('input', (e) => {
+            const price = parseFloat(e.target.value) || 0;
+            state.sinkOperations[op.id].price = price;
+        });
+    });
+
+    console.log(`[SINK_OPS] UI инициализирован для ${filteredOps.length} операций типа ${sinkTypeCode}`);
+}
+
 // === Заполнение селекта камнями ===
 function populateStoneSelect() {
     const stoneSelect = document.getElementById('stoneSelect');
@@ -264,12 +406,32 @@ const ACRYLIC_OPERATIONS_FALLBACK = [
     { id: 'local-11', name: 'Упаковка и складирование', unit: 'шт' }
 ];
 
+// === БЛОК 2: Константы доп. операций моек ===
+
+// Fallback для типов моек
+const SINK_TYPES_FALLBACK = [
+    { id: 'local-vn', code: 'VN', name: 'Раковина VN' },
+    { id: 'local-ko', code: 'КО', name: 'Мойка КО' },
+    { id: 'local-kg', code: 'КГ', name: 'Мойка КГ' },
+    { id: 'local-kgr', code: 'КГР', name: 'Мойка КГР' },
+    { id: 'local-kr', code: 'KR', name: 'Мойка KR' }
+];
+
+// Fallback для доп. операций (только VN)
+const SINK_EXTRA_OPS_FALLBACK = [
+    { id: 'local-s1', sink_type_code: 'VN', name: 'Формовка (термоформинг)', default_price: null },
+    { id: 'local-s2', sink_type_code: 'VN', name: 'Формовка, фрезеровка, подсклейку', default_price: null },
+    { id: 'local-s3', sink_type_code: 'VN', name: 'Формовка, фрезеровка, подсклейку, отверстие, подслив, шлифовка', default_price: null },
+    { id: 'local-s4', sink_type_code: 'VN', name: 'Подклейка, полировка', default_price: null }
+];
+
 // === Состояние приложения ===
 let state = {
     currentRate: 700, // будет обновлено после загрузки из Supabase
     selectedStoneId: null, // ID выбранного камня
     operationValues: {},
     acrylicOperations: {}, // БЛОК 1: { operation_id: { checked: bool, volume: number } }
+    sinkOperations: {}, // БЛОК 2: { operation_id: { checked: bool, price: number } }
     calculations: [],
     workLog: [],
     timer: {
@@ -356,6 +518,11 @@ async function initApp() {
     // БЛОК 1: Загружаем операции акрила из Supabase
     const acrylicOps = await loadAcrylicOperations();
     populateAcrylicOperationsUI(acrylicOps);
+
+    // БЛОК 2: Загружаем типы моек и доп. операции из Supabase
+    loadedSinkTypes = await loadSinkTypes();
+    loadedSinkExtraOps = await loadSinkExtraOperations();
+    console.log('[SINK_OPS] Данные моек загружены:', loadedSinkTypes.length, 'типов,', loadedSinkExtraOps.length, 'операций');
 
     // Обновляем UI с загруженной ставкой
     const currentRateEl = document.getElementById('currentRate');
@@ -537,6 +704,21 @@ function initOrderParams() {
         });
     }
 
+    // БЛОК 2: Обработчик изменения типа мойки
+    const sinkTypeSelect = document.getElementById('sinkType');
+    if (sinkTypeSelect) {
+        sinkTypeSelect.addEventListener('change', (e) => {
+            const sinkType = e.target.value;
+            if (sinkType && loadedSinkExtraOps.length > 0) {
+                populateSinkOperationsUI(loadedSinkExtraOps, sinkType);
+            } else {
+                // Скрываем карточку, если тип мойки не выбран
+                const card = document.getElementById('sinkOperationsCard');
+                if (card) card.style.display = 'none';
+            }
+        });
+    }
+
     const saveBtn = document.getElementById('saveCalculation');
     if (saveBtn) {
         saveBtn.addEventListener('click', saveCalculation);
@@ -685,7 +867,7 @@ function clearForm() {
 
 // === Валидация моек и сливов ===
 // Типы моек, для которых обязателен выбор слива
-const REQUIRED_DRAIN_SINK_TYPES = ['ВН', 'К0', 'КГ', 'КГР', 'КР'];
+const REQUIRED_DRAIN_SINK_TYPES = ['VN', 'КО', 'КГ', 'КГР', 'KR'];
 
 function validateSinkAndDrainBeforeSave() {
     const sinkTypeSelect = document.getElementById('sinkType');
@@ -768,6 +950,7 @@ async function saveCalculation() {
         drainType, // Тип слива
         operations: { ...state.operationValues },
         acrylicOperations: { ...state.acrylicOperations }, // БЛОК 1: операции акрила
+        sinkOperations: { ...state.sinkOperations }, // БЛОК 2: доп. операции моек
         totalTime,
         totalFinalCost,
         createdAt: new Date().toISOString()
@@ -877,6 +1060,34 @@ async function saveCalculation() {
             console.log('[SAVE] Операции акрила сохранены успешно');
         } else {
             console.log('[SAVE] Нет выбранных операций акрила для сохранения');
+        }
+
+        // 6. БЛОК 2: Сохраняем доп. операции моек в order_sink_operations
+        const sinkOpsPayload = [];
+        for (const [opId, data] of Object.entries(state.sinkOperations)) {
+            if (data.checked && data.price > 0) {
+                sinkOpsPayload.push({
+                    order_id: orderData.id,
+                    sink_op_id: opId,
+                    price: parseFloat(data.price)
+                });
+            }
+        }
+
+        if (sinkOpsPayload.length > 0) {
+            console.log('[SAVE] Payload для order_sink_operations:', sinkOpsPayload);
+
+            const { error: sinkOpsError } = await supabase
+                .from('order_sink_operations')
+                .insert(sinkOpsPayload);
+
+            if (sinkOpsError) {
+                throw new Error(`Ошибка сохранения операций моек: ${sinkOpsError.message}`);
+            }
+
+            console.log('[SAVE] Операции моек сохранены успешно');
+        } else {
+            console.log('[SAVE] Нет выбранных операций моек для сохранения');
         }
 
         alert('Расчёт успешно сохранён в базу данных!');

@@ -53,11 +53,11 @@
                             <label for="sinkType">Тип мойки</label>
                             <select id="sinkType">
                                 <option value="">— нет мойки —</option>
-                                <option value="ВН">ВН</option>
-                                <option value="К0">К0</option>
+                                <option value="VN">VN</option>
+                                <option value="КО">КО</option>
                                 <option value="КГ">КГ</option>
                                 <option value="КГР">КГР</option>
-                                <option value="КР">КР</option>
+                                <option value="KR">KR</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -69,6 +69,18 @@
                                 <option value="expensive">Наш слив — дорогой</option>
                             </select>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- БЛОК 2: Доп. операции по мойкам -->
+            <div class="card" id="sinkOperationsCard" style="display: none;">
+                <div class="card-header">
+                    <h2>Доп. операции по мойкам</h2>
+                </div>
+                <div class="card-body">
+                    <div class="sink-operations-grid" id="sinkOperationsContainer">
+                        <!-- Операции генерируются через JS -->
                     </div>
                 </div>
             </div>
