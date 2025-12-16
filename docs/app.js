@@ -934,11 +934,8 @@ async function initApp() {
     loadedMasterSkills = await loadMasterSkillsList();
     console.log('[MASTER_SKILLS] Навыки мастеров загружены:', loadedMasterSkills.length);
 
-    // Обновляем UI с загруженной ставкой
-    const currentRateEl = document.getElementById('currentRate');
-    if (currentRateEl) {
-        currentRateEl.textContent = state.currentRate;
-    }
+    // Загружаем ставки в select для выбора в интерфейсе расчетов
+    await loadRatesIntoSelect();
 
     // Остальная инициализация
     loadFromStorage();
@@ -1112,6 +1109,21 @@ function initOrderParams() {
             }
             calculateAll();
         });
+    }
+
+    // Обработчик выбора ставки
+    const rateSelect = document.getElementById('rateSelect');
+    if (rateSelect) {
+        rateSelect.addEventListener('change', (e) => {
+            const selectedRate = parseFloat(e.target.value);
+            if (selectedRate && !isNaN(selectedRate)) {
+                state.currentRate = selectedRate;
+                currentHourlyRate = selectedRate;
+                calculateAll(); // Пересчитываем время с новой ставкой
+                console.log('[RATE_SELECT] Выбрана ставка:', selectedRate);
+            }
+        });
+        console.log('[RATE_SELECT] Обработчик выбора ставки инициализирован');
     }
 
     // БЛОК 2: Обработчик изменения типа мойки
@@ -4133,7 +4145,7 @@ function renderAdminRatesTable() {
     if (!tbody) return;
 
     if (adminRatesList.length === 0) {
-        tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Нет ставок</td></tr>';
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="5">Нет ставок</td></tr>';
         return;
     }
 
@@ -4141,9 +4153,20 @@ function renderAdminRatesTable() {
     adminRatesList.forEach((rate, index) => {
         const row = document.createElement('tr');
 
-        // Порядковый номер вместо UUID
+        // Название ставки
         const nameCell = document.createElement('td');
-        nameCell.textContent = `#${index + 1}`;
+        nameCell.textContent = rate.name || 'Без названия';
+        nameCell.style.fontWeight = rate.is_default ? 'bold' : 'normal';
+
+        // Тип материала
+        const materialCell = document.createElement('td');
+        const materialLabels = {
+            'acrylic': 'Акрил',
+            'stone': 'Камень',
+            'quartz': 'Кварц',
+            'other': 'Другое'
+        };
+        materialCell.textContent = materialLabels[rate.material_type] || rate.material_type || '—';
 
         // Стоимость
         const valueCell = document.createElement('td');
@@ -4183,6 +4206,7 @@ function renderAdminRatesTable() {
 
         // Добавляем все ячейки в строку
         row.appendChild(nameCell);
+        row.appendChild(materialCell);
         row.appendChild(valueCell);
         row.appendChild(defaultCell);
         row.appendChild(actionsCell);
@@ -4201,6 +4225,8 @@ function showAdminRateForm(rate = null) {
         // Режим редактирования
         formTitle.textContent = 'Редактировать ставку';
         document.getElementById('adminRateId').value = rate.id;
+        document.getElementById('adminRateName').value = rate.name || '';
+        document.getElementById('adminRateMaterial').value = rate.material_type || '';
         document.getElementById('adminRateValue').value = rate.rate_value || 0;
         document.getElementById('adminRateIsDefault').checked = rate.is_default || false;
     } else {
@@ -4208,6 +4234,8 @@ function showAdminRateForm(rate = null) {
         formTitle.textContent = 'Добавить ставку';
         form.reset();
         document.getElementById('adminRateId').value = '';
+        document.getElementById('adminRateName').value = '';
+        document.getElementById('adminRateMaterial').value = '';
         document.getElementById('adminRateIsDefault').checked = false;
     }
 
@@ -4224,8 +4252,20 @@ function hideAdminRateForm() {
 // === Сохранение ставки (создание или обновление) ===
 async function saveAdminRate() {
     const rateId = document.getElementById('adminRateId').value;
+    const rateName = document.getElementById('adminRateName').value.trim();
+    const materialType = document.getElementById('adminRateMaterial').value;
     const rateValue = parseFloat(document.getElementById('adminRateValue').value);
     const isDefault = document.getElementById('adminRateIsDefault').checked;
+
+    if (!rateName) {
+        alert('Введите название ставки');
+        return;
+    }
+
+    if (!materialType) {
+        alert('Выберите тип материала');
+        return;
+    }
 
     if (rateValue <= 0 || isNaN(rateValue)) {
         alert('Стоимость должна быть положительным числом');
@@ -4235,11 +4275,20 @@ async function saveAdminRate() {
     try {
         // Если устанавливаем новую дефолтную ставку, снимаем флаг у других
         if (isDefault) {
-            const { error: updateError } = await supabase
+            // Снимаем флаг is_default со всех записей
+            let query = supabase
                 .from('hourly_rates')
-                .update({ is_default: false })
-                .neq('id', rateId || 0)
-                .select();
+                .update({ is_default: false });
+
+            // Если редактируем существующую ставку, исключаем её из обновления
+            if (rateId) {
+                query = query.neq('id', rateId);
+            } else {
+                // При создании новой ставки обновляем все записи (WHERE обязателен)
+                query = query.not('id', 'is', null);
+            }
+
+            const { error: updateError } = await query.select();
 
             if (updateError) throw updateError;
         }
@@ -4250,6 +4299,8 @@ async function saveAdminRate() {
             const { error } = await supabase
                 .from('hourly_rates')
                 .update({
+                    name: rateName,
+                    material_type: materialType,
                     rate_value: rateValue,
                     is_default: isDefault
                 })
@@ -4264,6 +4315,8 @@ async function saveAdminRate() {
             const { error } = await supabase
                 .from('hourly_rates')
                 .insert([{
+                    name: rateName,
+                    material_type: materialType,
                     rate_value: rateValue,
                     is_default: isDefault
                 }]);
@@ -4279,6 +4332,9 @@ async function saveAdminRate() {
         if (isDefault) {
             await updateCurrentRateDisplay();
         }
+
+        // Обновление select с ставками в интерфейсе расчетов
+        await loadRatesIntoSelect();
 
         // Скрытие формы
         hideAdminRateForm();
@@ -4303,11 +4359,11 @@ async function setDefaultRate(rateId) {
     try {
         console.log(`[ADMIN_RATES] Установка ставки ${rateId} как дефолтной`);
 
-        // Снимаем флаг у всех ставок
+        // Снимаем флаг у всех ставок (используем .not для обязательного WHERE)
         const { error: updateError } = await supabase
             .from('hourly_rates')
             .update({ is_default: false })
-            .neq('id', 0)
+            .not('id', 'is', null)
             .select();
 
         if (updateError) throw updateError;
@@ -4326,6 +4382,9 @@ async function setDefaultRate(rateId) {
 
         // Обновление отображения текущей ставки
         await updateCurrentRateDisplay();
+
+        // Обновление select с ставками в интерфейсе расчетов
+        await loadRatesIntoSelect();
 
         console.log('[ADMIN_RATES] Дефолтная ставка изменена');
     } catch (error) {
@@ -4349,6 +4408,72 @@ async function updateCurrentRateDisplay() {
     }
 
     console.log('[ADMIN_RATES] Текущая ставка обновлена:', currentHourlyRate);
+}
+
+// === Загрузка ставок в select для интерфейса расчетов ===
+async function loadRatesIntoSelect() {
+    const rateSelect = document.getElementById('rateSelect');
+    if (!rateSelect) return;
+
+    if (!supabase) {
+        console.warn('[RATES_SELECT] Supabase не подключен, используется дефолтная ставка');
+        rateSelect.innerHTML = `<option value="${state.currentRate}">${state.currentRate} ₽/час (по умолчанию)</option>`;
+        rateSelect.value = state.currentRate;
+        return;
+    }
+
+    try {
+        console.log('[RATES_SELECT] Загрузка ставок в select');
+        const { data: rates, error } = await supabase
+            .from('hourly_rates')
+            .select('id, name, material_type, rate_value, is_default')
+            .order('rate_value', { ascending: false });
+
+        if (error) throw error;
+
+        if (!rates || rates.length === 0) {
+            rateSelect.innerHTML = `<option value="${state.currentRate}">${state.currentRate} ₽/час (по умолчанию)</option>`;
+            rateSelect.value = state.currentRate;
+            return;
+        }
+
+        // Формируем опции для select
+        rateSelect.innerHTML = '';
+        let defaultRateValue = state.currentRate;
+
+        rates.forEach(rate => {
+            const option = document.createElement('option');
+            option.value = rate.rate_value;
+
+            // Формат: "Название - Тип (цена ₽/ч)"
+            const materialLabels = {
+                'acrylic': 'Акрил',
+                'stone': 'Камень',
+                'quartz': 'Кварц',
+                'other': 'Другое'
+            };
+            const materialName = materialLabels[rate.material_type] || rate.material_type;
+            option.textContent = `${rate.name} - ${materialName} (${rate.rate_value} ₽/ч)`;
+
+            // Добавляем маркер дефолтной ставки
+            if (rate.is_default) {
+                option.textContent += ' ⭐';
+                defaultRateValue = rate.rate_value;
+            }
+
+            rateSelect.appendChild(option);
+        });
+
+        // Устанавливаем дефолтную ставку
+        rateSelect.value = defaultRateValue;
+        state.currentRate = defaultRateValue;
+
+        console.log('[RATES_SELECT] Ставки загружены:', rates.length, 'шт, дефолтная:', defaultRateValue);
+    } catch (error) {
+        console.error('[RATES_SELECT] Ошибка загрузки ставок:', error);
+        rateSelect.innerHTML = `<option value="${state.currentRate}">${state.currentRate} ₽/час (ошибка загрузки)</option>`;
+        rateSelect.value = state.currentRate;
+    }
 }
 
 // ========================================

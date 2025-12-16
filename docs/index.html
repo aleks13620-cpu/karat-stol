@@ -47,7 +47,13 @@
                         <div class="form-group">
                             <label for="ordersCount">Количество заказов</label>
                             <input type="number" id="ordersCount" value="1" min="1">
-                            <small class="hint">Ставка: <span id="currentRate">700</span> руб/час</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="rateSelect">Ставка работы</label>
+                            <select id="rateSelect">
+                                <option value="">Загрузка...</option>
+                            </select>
+                            <small class="hint">Выберите ставку для расчета времени работы</small>
                         </div>
                         <div class="form-group">
                             <label for="sinkType">Тип мойки</label>
@@ -615,7 +621,8 @@ localStorage.setItem('supabaseKey', 'ваш-anon-key');</pre>
                             <table class="analysis-table">
                                 <thead>
                                     <tr>
-                                        <th>ID</th>
+                                        <th>Название</th>
+                                        <th>Тип материала</th>
                                         <th>Стоимость (₽/час)</th>
                                         <th>По умолчанию</th>
                                         <th>Действия</th>
@@ -623,7 +630,7 @@ localStorage.setItem('supabaseKey', 'ваш-anon-key');</pre>
                                 </thead>
                                 <tbody id="adminRatesTable">
                                     <tr class="empty-row">
-                                        <td colspan="4">Загрузка...</td>
+                                        <td colspan="5">Загрузка...</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -639,6 +646,24 @@ localStorage.setItem('supabaseKey', 'ваш-anon-key');</pre>
                     <div class="card-body">
                         <form id="adminRateForm">
                             <input type="hidden" id="adminRateId">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="adminRateName">Название ставки <span style="color: red;">*</span></label>
+                                    <input type="text" id="adminRateName" required placeholder="Например: Основная ставка" maxlength="100">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="adminRateMaterial">Тип материала <span style="color: red;">*</span></label>
+                                    <select id="adminRateMaterial" required>
+                                        <option value="">-- Выберите тип --</option>
+                                        <option value="acrylic">Акрил</option>
+                                        <option value="stone">Камень</option>
+                                        <option value="quartz">Кварц</option>
+                                        <option value="other">Другое</option>
+                                    </select>
+                                </div>
+                            </div>
                             <div class="form-row">
                                 <div class="form-group">
                                     <label for="adminRateValue">Стоимость (₽/час) <span style="color: red;">*</span></label>
