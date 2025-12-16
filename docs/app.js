@@ -28,6 +28,9 @@ let availableStones = [];
 let loadedSinkTypes = [];
 let loadedSinkExtraOps = [];
 
+// === БЛОК 3: Переменные для хранения загруженных навыков мастеров ===
+let loadedMasterSkills = [];
+
 // === Начальные мастера для локального режима (когда workLog пустой) ===
 const DEFAULT_LOCAL_MASTERS = [
     { id: null, name: 'Иванов И.И.' },
@@ -237,6 +240,364 @@ async function loadSinkExtraOperations() {
     }
 }
 
+// === БЛОК 3: Загрузка навыков мастеров из Supabase ===
+async function loadMasterSkillsList() {
+    if (!supabase) {
+        console.warn('Supabase не подключен, используется локальный список навыков');
+        return MASTER_SKILLS_FALLBACK;
+    }
+
+    try {
+        const { data, error } = await supabase
+            .from('master_skills')
+            .select('id, code, name, description, is_complex')
+            .eq('is_active', true)
+            .order('created_at');
+
+        if (error) {
+            console.error('Ошибка загрузки навыков мастеров из Supabase:', error);
+            return MASTER_SKILLS_FALLBACK;
+        }
+
+        if (data && data.length > 0) {
+            console.log(`Загружено навыков мастеров: ${data.length}`);
+            return data;
+        }
+
+        console.warn('Нет активных навыков в таблице master_skills');
+        return MASTER_SKILLS_FALLBACK;
+    } catch (err) {
+        console.error('Ошибка при загрузке навыков мастеров:', err);
+        return MASTER_SKILLS_FALLBACK;
+    }
+}
+
+// === БЛОК 3: Заполнение UI навыками мастеров ===
+function populateMasterSkillsUI(skills) {
+    const container = document.getElementById('masterSkillsContainer');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    if (skills.length === 0) {
+        container.innerHTML = '<p class="empty-message">Навыки не загружены</p>';
+        return;
+    }
+
+    skills.forEach(skill => {
+        const isChecked = state.masterSkills.includes(skill.id);
+
+        const div = document.createElement('div');
+        div.className = 'acrylic-operation-item';
+        div.innerHTML = `
+            <label>
+                <input type="checkbox" id="masterSkill_${skill.id}" data-skill-id="${skill.id}"
+                       ${isChecked ? 'checked' : ''}>
+                <span title="${skill.description || ''}">${skill.name}</span>
+            </label>
+        `;
+        container.appendChild(div);
+
+        // Обработчик чекбокса
+        const checkbox = div.querySelector('input[type="checkbox"]');
+        checkbox.addEventListener('change', (e) => {
+            const skillId = skill.id;
+            if (e.target.checked) {
+                // Добавляем навык, если его еще нет
+                if (!state.masterSkills.includes(skillId)) {
+                    state.masterSkills.push(skillId);
+                }
+            } else {
+                // Удаляем навык
+                state.masterSkills = state.masterSkills.filter(id => id !== skillId);
+            }
+            console.log('[MASTER_SKILLS] Выбранные навыки:', state.masterSkills);
+        });
+    });
+
+    console.log('[MASTER_SKILLS] UI инициализирован для', skills.length, 'навыков');
+}
+
+// === БЛОК 3: Отображение информации о выбранном мастере в разделе "Учет времени" ===
+async function displaySelectedMasterInfo(masterId) {
+    const infoBlock = document.getElementById('selectedMasterInfo');
+    const levelEl = document.getElementById('selectedMasterLevel');
+    const skillsEl = document.getElementById('selectedMasterSkills');
+
+    if (!masterId || !supabase || !infoBlock) {
+        if (infoBlock) infoBlock.style.display = 'none';
+        return;
+    }
+
+    try {
+        // 1. Загружаем данные мастера (включая навыки)
+        const { data: master, error: masterError } = await supabase
+            .from('masters')
+            .select('id, name, qualification_level, skills_text')
+            .eq('id', masterId)
+            .single();
+
+        if (masterError) throw masterError;
+
+        // 2. Загружаем название уровня квалификации
+        const { data: level } = await supabase
+            .from('master_levels')
+            .select('name, description')
+            .eq('id', master.qualification_level)
+            .single();
+
+        // 3. Формируем строку с навыками из текстового поля
+        const skillNames = master.skills_text || 'Навыки не указаны';
+
+        // 4. Отображаем информацию
+        if (levelEl) levelEl.textContent = level ? level.name : 'Не указан';
+        if (skillsEl) skillsEl.textContent = skillNames;
+        infoBlock.style.display = 'block';
+
+        console.log('[MASTER_INFO] Информация о мастере загружена:', {
+            level: level?.name,
+            skills: skillNames
+        });
+
+    } catch (err) {
+        console.error('[MASTER_INFO] Ошибка загрузки информации о мастере:', err);
+        if (infoBlock) infoBlock.style.display = 'none';
+    }
+}
+
+// === БЛОК 3: Управление навыками мастера в админ-панели ===
+
+// Заполнение чекбоксов навыков в форме редактирования мастера
+async function populateAdminMasterSkillsCheckboxes(selectedSkillIds = []) {
+    const container = document.getElementById('adminMasterSkillsCheckboxes');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    if (loadedMasterSkills.length === 0) {
+        container.innerHTML = '<p style="color: #999; font-style: italic;">Навыки не загружены из базы данных</p>';
+        return;
+    }
+
+    loadedMasterSkills.forEach(skill => {
+        const isChecked = selectedSkillIds.includes(skill.id);
+
+        const div = document.createElement('div');
+        div.className = 'acrylic-operation-item';
+        div.innerHTML = `
+            <label style="cursor: pointer;">
+                <input type="checkbox" class="admin-skill-checkbox"
+                       data-skill-id="${skill.id}"
+                       ${isChecked ? 'checked' : ''}>
+                <span title="${skill.description || ''}">${skill.name}</span>
+            </label>
+        `;
+        container.appendChild(div);
+    });
+
+    console.log('[ADMIN_SKILLS] Чекбоксы навыков инициализированы:', loadedMasterSkills.length);
+}
+
+// Загрузка навыков конкретного мастера из БД
+async function loadAdminMasterSkillsMapping(masterId) {
+    if (!supabase || !masterId) return [];
+
+    try {
+        const { data, error } = await supabase
+            .from('master_skills_mapping')
+            .select('skill_id')
+            .eq('master_id', masterId);
+
+        if (error) throw error;
+
+        const skillIds = data ? data.map(row => row.skill_id) : [];
+        console.log('[ADMIN_SKILLS] Навыки мастера загружены:', skillIds.length);
+        return skillIds;
+
+    } catch (err) {
+        console.error('[ADMIN_SKILLS] Ошибка загрузки навыков мастера:', err);
+        return [];
+    }
+}
+
+// Сохранение навыков мастера в БД
+async function saveAdminMasterSkillsMapping(masterId, skillIds) {
+    if (!supabase || !masterId) return;
+
+    try {
+        // 1. Удаляем все старые связи
+        const { error: deleteError } = await supabase
+            .from('master_skills_mapping')
+            .delete()
+            .eq('master_id', masterId);
+
+        if (deleteError) throw deleteError;
+
+        // 2. Добавляем новые связи
+        if (skillIds.length > 0) {
+            const mappings = skillIds.map(skillId => ({
+                master_id: masterId,
+                skill_id: skillId
+            }));
+
+            const { error: insertError } = await supabase
+                .from('master_skills_mapping')
+                .insert(mappings);
+
+            if (insertError) throw insertError;
+        }
+
+        console.log('[ADMIN_SKILLS] Навыки мастера сохранены:', skillIds.length);
+
+    } catch (err) {
+        console.error('[ADMIN_SKILLS] Ошибка сохранения навыков мастера:', err);
+        throw err;
+    }
+}
+
+// === БЛОК: Дополнительные работы ===
+
+// Добавить новую дополнительную работу
+function addExtraWork() {
+    const id = Date.now(); // Уникальный ID
+    const extraWork = {
+        id: id,
+        name: '',
+        cost: 0
+    };
+
+    state.extraWorks.push(extraWork);
+    renderExtraWorks();
+
+    // Фокусируем поле названия новой работы
+    setTimeout(() => {
+        const nameInput = document.getElementById(`extraWorkName_${id}`);
+        if (nameInput) nameInput.focus();
+    }, 100);
+
+    console.log('[EXTRA_WORKS] Добавлена работа:', id);
+}
+
+// Удалить дополнительную работу
+function removeExtraWork(id) {
+    state.extraWorks = state.extraWorks.filter(work => work.id !== id);
+    renderExtraWorks();
+    updateExtraWorksSummary();
+    calculateAll(); // Пересчитываем общее время
+    console.log('[EXTRA_WORKS] Удалена работа:', id);
+}
+
+// Обновить данные дополнительной работы
+function updateExtraWork(id, field, value) {
+    const work = state.extraWorks.find(w => w.id === id);
+    if (work) {
+        work[field] = value;
+        if (field === 'cost') {
+            updateExtraWorksSummary();
+            calculateAll(); // Пересчитываем общее время
+        }
+    }
+}
+
+// Отрисовка списка дополнительных работ
+function renderExtraWorks() {
+    const container = document.getElementById('extraWorksContainer');
+    const emptyMessage = document.getElementById('extraWorksEmpty');
+
+    if (!container) return;
+
+    // Очищаем контейнер (кроме сообщения о пустоте)
+    const existingWorks = container.querySelectorAll('.extra-work-item');
+    existingWorks.forEach(item => item.remove());
+
+    if (state.extraWorks.length === 0) {
+        if (emptyMessage) emptyMessage.style.display = 'block';
+        return;
+    }
+
+    if (emptyMessage) emptyMessage.style.display = 'none';
+
+    state.extraWorks.forEach(work => {
+        const div = document.createElement('div');
+        div.className = 'extra-work-item';
+        div.style.cssText = 'display: flex; gap: 10px; align-items: center; margin-bottom: 10px; padding: 10px; background: white; border: 1px solid #dee2e6; border-radius: 4px;';
+
+        div.innerHTML = `
+            <input type="text"
+                   id="extraWorkName_${work.id}"
+                   placeholder="Название работы"
+                   value="${work.name || ''}"
+                   style="flex: 2; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+            <input type="number"
+                   id="extraWorkCost_${work.id}"
+                   placeholder="Стоимость"
+                   value="${work.cost || ''}"
+                   min="0"
+                   step="0.01"
+                   style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+            <span style="color: #666;">₽</span>
+            <button class="btn btn-danger"
+                    onclick="removeExtraWork(${work.id})"
+                    style="padding: 8px 12px;">🗑️</button>
+        `;
+
+        container.appendChild(div);
+
+        // Добавляем обработчики
+        const nameInput = div.querySelector(`#extraWorkName_${work.id}`);
+        const costInput = div.querySelector(`#extraWorkCost_${work.id}`);
+
+        nameInput.addEventListener('input', (e) => {
+            updateExtraWork(work.id, 'name', e.target.value);
+        });
+
+        costInput.addEventListener('input', (e) => {
+            const cost = parseFloat(e.target.value) || 0;
+            updateExtraWork(work.id, 'cost', cost);
+        });
+    });
+
+    updateExtraWorksSummary();
+}
+
+// Обновление сводки по дополнительным работам
+function updateExtraWorksSummary() {
+    const summaryBlock = document.getElementById('extraWorksSummary');
+    const totalCostEl = document.getElementById('extraWorksTotalCost');
+    const totalTimeEl = document.getElementById('extraWorksTotalTime');
+
+    if (!summaryBlock || !totalCostEl || !totalTimeEl) return;
+
+    // Считаем общую стоимость
+    const totalCost = state.extraWorks.reduce((sum, work) => sum + (work.cost || 0), 0);
+
+    // Считаем время на основе текущей ставки
+    const totalHours = totalCost / state.currentRate;
+    const hours = Math.floor(totalHours);
+    const minutes = Math.round((totalHours - hours) * 60);
+
+    // Отображаем
+    if (state.extraWorks.length > 0 && totalCost > 0) {
+        summaryBlock.style.display = 'block';
+        totalCostEl.textContent = `${totalCost.toLocaleString('ru-RU')} ₽`;
+        totalTimeEl.textContent = `${hours} ч ${minutes} мин`;
+    } else {
+        summaryBlock.style.display = 'none';
+    }
+
+    console.log('[EXTRA_WORKS] Итого:', {
+        cost: totalCost,
+        hours: totalHours.toFixed(2)
+    });
+}
+
+// Получить общее время дополнительных работ в минутах
+function getExtraWorksTotalMinutes() {
+    const totalCost = state.extraWorks.reduce((sum, work) => sum + (work.cost || 0), 0);
+    const totalHours = totalCost / state.currentRate;
+    return Math.round(totalHours * 60);
+}
+
 // === БЛОК 2: Заполнение UI доп. операциями моек ===
 function populateSinkOperationsUI(allOperations, sinkTypeCode) {
     const container = document.getElementById('sinkOperationsContainer');
@@ -425,6 +786,50 @@ const SINK_EXTRA_OPS_FALLBACK = [
     { id: 'local-s4', sink_type_code: 'VN', name: 'Подклейка, полировка', default_price: null }
 ];
 
+// === БЛОК 3: Константы навыков мастеров ===
+const MASTER_SKILLS_FALLBACK = [
+    { id: 'local-skill-1', code: 'sink_vn', name: 'Сложные работы с раковинами VN', description: 'Термоформинг и сложная обработка раковин VN', is_complex: true },
+    { id: 'local-skill-2', code: 'sink_ko', name: 'Сложные работы с мойками КО', description: 'Установка и обработка моек типа КО', is_complex: true },
+    { id: 'local-skill-3', code: 'sink_kg', name: 'Сложные работы с мойками КГ/КГР', description: 'Установка и обработка моек типа КГ и КГР', is_complex: true },
+    { id: 'local-skill-4', code: 'curved_edges', name: 'Работа с радиусными кромками', description: 'Фрезеровка и обработка радиусных и фигурных кромок', is_complex: true },
+    { id: 'local-skill-5', code: 'polishing', name: 'Финишная полировка', description: 'Качественная финишная полировка и шлифовка', is_complex: true }
+];
+
+// === БЛОК 3: Функция расчёта коэффициента времени на основе уровня мастера ===
+/**
+ * Возвращает коэффициент времени для мастера заданного уровня.
+ *
+ * ВАЖНО: В текущей версии функция возвращает 1.0 для всех уровней,
+ * чтобы не изменять существующие расчёты времени.
+ *
+ * В будущих версиях (Блок 5) будет использоваться реальная логика:
+ * - Уровень 1 (самый высокий): коэффициент 0.85 (работает на 15% быстрее)
+ * - Уровень 2: коэффициент 0.95 (работает на 5% быстрее)
+ * - Уровень 3 (средний): коэффициент 1.0 (базовое время)
+ * - Уровень 4 (начинающий): коэффициент 1.15 (работает на 15% медленнее)
+ *
+ * @param {number|null} masterLevelId - ID уровня мастера (1-4)
+ * @returns {number} - коэффициент времени (пока всегда 1.0)
+ */
+function getMasterTimeFactor(masterLevelId) {
+    // БЛОК 3: Пока возвращаем 1.0, чтобы не менять текущие расчёты
+    // В будущем (Блок 5) здесь будет использоваться реальная логика
+
+    // Закомментированная логика для будущего использования:
+    /*
+    const TIME_FACTORS = {
+        1: 0.85,  // Уровень 1 - самый высокий
+        2: 0.95,  // Уровень 2
+        3: 1.0,   // Уровень 3 - средний
+        4: 1.15   // Уровень 4 - начинающий
+    };
+
+    return TIME_FACTORS[masterLevelId] || 1.0;
+    */
+
+    return 1.0; // Пока всегда возвращаем базовый коэффициент
+}
+
 // === Состояние приложения ===
 let state = {
     currentRate: 700, // будет обновлено после загрузки из Supabase
@@ -432,6 +837,7 @@ let state = {
     operationValues: {},
     acrylicOperations: {}, // БЛОК 1: { operation_id: { checked: bool, volume: number } }
     sinkOperations: {}, // БЛОК 2: { operation_id: { checked: bool, price: number } }
+    extraWorks: [], // Дополнительные работы: [{ id, name, cost }]
     calculations: [],
     workLog: [],
     timer: {
@@ -523,6 +929,10 @@ async function initApp() {
     loadedSinkTypes = await loadSinkTypes();
     loadedSinkExtraOps = await loadSinkExtraOperations();
     console.log('[SINK_OPS] Данные моек загружены:', loadedSinkTypes.length, 'типов,', loadedSinkExtraOps.length, 'операций');
+
+    // БЛОК 3: Загружаем навыки мастеров из Supabase
+    loadedMasterSkills = await loadMasterSkillsList();
+    console.log('[MASTER_SKILLS] Навыки мастеров загружены:', loadedMasterSkills.length);
 
     // Обновляем UI с загруженной ставкой
     const currentRateEl = document.getElementById('currentRate');
@@ -719,6 +1129,13 @@ function initOrderParams() {
         });
     }
 
+    // Обработчик кнопки добавления дополнительной работы
+    const addExtraWorkBtn = document.getElementById('addExtraWorkBtn');
+    if (addExtraWorkBtn) {
+        addExtraWorkBtn.addEventListener('click', addExtraWork);
+        console.log('[EXTRA_WORKS] Обработчик кнопки добавления инициализирован');
+    }
+
     const saveBtn = document.getElementById('saveCalculation');
     if (saveBtn) {
         saveBtn.addEventListener('click', saveCalculation);
@@ -750,6 +1167,11 @@ function calculateAll() {
     let totalAutoCost = 0;
     let totalManualCost = 0;
     let totalFinalCost = 0;
+
+    // БЛОК 3: Получаем коэффициент времени на основе уровня мастера
+    // ВАЖНО: Пока не используется в расчётах (всегда 1.0), будет применяться в Блоке 5
+    const masterTimeFactor = getMasterTimeFactor(state.masterLevelId);
+    // Для справки: masterTimeFactor доступен для использования в будущих версиях
 
     const thicknessEl = document.getElementById('volume_22');
     const thicknessValue = thicknessEl ? parseFloat(thicknessEl.value) || 0 : 0;
@@ -801,6 +1223,12 @@ function calculateAll() {
         totalManualCost += manualCost;
         totalFinalCost += finalCost;
     });
+
+    // Учитываем дополнительные работы
+    const extraWorksMinutes = getExtraWorksTotalMinutes();
+    totalTime += extraWorksMinutes;
+
+    console.log('[CALCULATE] Добавлено время доп. работ:', extraWorksMinutes, 'мин');
 
     // Обновление итогов
     const totalTimeEl = document.getElementById('totalTime');
@@ -855,6 +1283,11 @@ function clearForm() {
 
     const drainTypeSelect = document.getElementById('drainType');
     if (drainTypeSelect) drainTypeSelect.value = '';
+
+    // Очищаем дополнительные работы
+    state.extraWorks = [];
+    renderExtraWorks();
+    updateExtraWorksSummary();
 
     state.currentRate = currentHourlyRate; // используем загруженную ставку
 
@@ -951,6 +1384,7 @@ async function saveCalculation() {
         operations: { ...state.operationValues },
         acrylicOperations: { ...state.acrylicOperations }, // БЛОК 1: операции акрила
         sinkOperations: { ...state.sinkOperations }, // БЛОК 2: доп. операции моек
+        extraWorks: [...state.extraWorks], // Дополнительные работы
         totalTime,
         totalFinalCost,
         createdAt: new Date().toISOString()
@@ -972,15 +1406,19 @@ async function saveCalculation() {
         console.log('[SAVE] Начинаем сохранение в Supabase...');
 
         // 1. Формируем payload для таблицы orders
+        // Рассчитываем итоги дополнительных работ
+        const extraWorksTotalCost = state.extraWorks.reduce((sum, w) => sum + (w.cost || 0), 0);
+        const extraWorksTotalHours = extraWorksTotalCost / state.currentRate;
+
         const orderPayload = {
             order_number: orderNumber,
             calculator_type: 'acrylic_countertop', // фиксированный тип для акриловых столешниц
             calculator_version: 'v1.0', // версия калькулятора
             hourly_rate: parseFloat(state.currentRate),
             theoretical_time_calc_hours: parseFloat((totalTime / 60).toFixed(2)), // конвертация минут в часы
-            additional_work_cost: null, // пока не используется
-            additional_work_time_hours: null, // пока не используется
-            theoretical_time_total_hours: parseFloat((totalTime / 60).toFixed(2)), // конвертация минут в часы
+            additional_work_cost: extraWorksTotalCost, // стоимость дополнительных работ
+            additional_work_time_hours: parseFloat(extraWorksTotalHours.toFixed(2)), // время дополнительных работ
+            theoretical_time_total_hours: parseFloat((totalTime / 60).toFixed(2)), // общее время (уже включает доп. работы)
             complexity_level: null, // пока не рассчитывается
             is_training_data: false,
             is_outlier: false,
@@ -1222,13 +1660,36 @@ async function syncWorkLogEntryToSupabase(entry) {
         const now = new Date();
         const entryTimestamp = entry.timestamp ? new Date(entry.timestamp) : now;
 
+        // БЛОК 3: Загружаем данные мастера для snapshot квалификации и навыков
+        let masterQualification = null;
+        let masterSkills = null;
+
+        if (masterId) {
+            try {
+                const { data: masterData } = await supabase
+                    .from('masters')
+                    .select('qualification_level, skills_text')
+                    .eq('id', masterId)
+                    .single();
+
+                if (masterData) {
+                    masterQualification = masterData.qualification_level;
+                    masterSkills = masterData.skills_text;
+                }
+            } catch (err) {
+                console.warn('[WORKLOG_SYNC] Не удалось загрузить данные мастера:', err);
+            }
+        }
+
         const executionPayload = {
             order_id: orderId,
             master_id: masterId,
             fact_start_at: entryTimestamp.toISOString(),
             fact_end_at: entryTimestamp.toISOString(), // TODO: брать реальное время окончания
             status: 'completed',
-            comment: pauseMinutes > 0 ? `Работа с паузами (${pauseMinutes} мин)` : null
+            comment: pauseMinutes > 0 ? `Работа с паузами (${pauseMinutes} мин)` : null,
+            master_qualification_level: masterQualification, // БЛОК 3: snapshot квалификации
+            master_skills_snapshot: masterSkills // БЛОК 3: snapshot навыков
         };
 
         console.log('[WORKLOG_SYNC] Payload for order_execution:', executionPayload);
@@ -1372,6 +1833,15 @@ function loadCalculation(id) {
         }
     });
 
+    // Восстанавливаем дополнительные работы
+    if (calc.extraWorks && Array.isArray(calc.extraWorks)) {
+        state.extraWorks = calc.extraWorks.map(work => ({ ...work }));
+        renderExtraWorks();
+        console.log('[LOAD] Восстановлено дополнительных работ:', state.extraWorks.length);
+    } else {
+        state.extraWorks = [];
+    }
+
     calculateAll();
 }
 
@@ -1399,6 +1869,23 @@ function initTrackingUI() {
     if (searchInput) {
         searchInput.addEventListener('input', filterTrackingOrders);
         console.log('[TRACKING] Инициализирован поиск по заказам');
+    }
+
+    // БЛОК 3: Обработчик выбора мастера - показываем его квалификацию и навыки
+    const workMasterSelect = document.getElementById('workMasterSelect');
+    if (workMasterSelect) {
+        workMasterSelect.addEventListener('change', async (e) => {
+            const selectedOption = e.target.options[e.target.selectedIndex];
+            const masterId = selectedOption.dataset.masterId;
+
+            if (masterId) {
+                await displaySelectedMasterInfo(masterId);
+            } else {
+                const infoBlock = document.getElementById('selectedMasterInfo');
+                if (infoBlock) infoBlock.style.display = 'none';
+            }
+        });
+        console.log('[TRACKING] Обработчик выбора мастера инициализирован');
     }
 }
 
@@ -3413,6 +3900,12 @@ function showAdminMasterForm(master = null) {
         document.getElementById('adminMasterName').value = master.name;
         document.getElementById('adminMasterQualification').value = master.qualification_level || 1;
         document.getElementById('adminMasterIsActive').checked = master.is_active;
+
+        // БЛОК 3: Загружаем навыки мастера (текстовое поле)
+        const skillsTextarea = document.getElementById('adminMasterSkills');
+        if (skillsTextarea) {
+            skillsTextarea.value = master.skills_text || '';
+        }
     } else {
         // Режим добавления
         formTitle.textContent = 'Добавить мастера';
@@ -3420,6 +3913,12 @@ function showAdminMasterForm(master = null) {
         document.getElementById('adminMasterId').value = '';
         document.getElementById('adminMasterQualification').value = 1;
         document.getElementById('adminMasterIsActive').checked = true;
+
+        // БЛОК 3: Очищаем текстовое поле навыков
+        const skillsTextarea = document.getElementById('adminMasterSkills');
+        if (skillsTextarea) {
+            skillsTextarea.value = '';
+        }
     }
 
     formCard.style.display = 'block';
@@ -3439,6 +3938,10 @@ async function saveAdminMaster() {
     const qualificationLevel = parseInt(document.getElementById('adminMasterQualification').value);
     const isActive = document.getElementById('adminMasterIsActive').checked;
 
+    // БЛОК 3: Получаем навыки из текстового поля
+    const skillsTextarea = document.getElementById('adminMasterSkills');
+    const skillsText = skillsTextarea ? skillsTextarea.value.trim() : '';
+
     if (!name) {
         alert('Введите имя мастера');
         return;
@@ -3450,6 +3953,8 @@ async function saveAdminMaster() {
     }
 
     try {
+        let savedMasterId = masterId;
+
         if (masterId) {
             // Обновление существующего мастера
             console.log('[ADMIN] Обновление мастера:', masterId);
@@ -3458,7 +3963,8 @@ async function saveAdminMaster() {
                 .update({
                     name: name,
                     qualification_level: qualificationLevel,
-                    is_active: isActive
+                    is_active: isActive,
+                    skills_text: skillsText // БЛОК 3: сохраняем навыки
                 })
                 .eq('id', masterId)
                 .select();
@@ -3468,16 +3974,20 @@ async function saveAdminMaster() {
         } else {
             // Создание нового мастера
             console.log('[ADMIN] Создание нового мастера');
-            const { error } = await supabase
+            const { data, error } = await supabase
                 .from('masters')
                 .insert([{
                     name: name,
                     qualification_level: qualificationLevel,
-                    is_active: isActive
-                }]);
+                    is_active: isActive,
+                    skills_text: skillsText // БЛОК 3: сохраняем навыки
+                }])
+                .select()
+                .single();
 
             if (error) throw error;
-            console.log('[ADMIN] Мастер создан');
+            savedMasterId = data.id;
+            console.log('[ADMIN] Мастер создан:', savedMasterId);
         }
 
         // Перезагрузка списка мастеров

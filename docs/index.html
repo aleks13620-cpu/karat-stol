@@ -125,6 +125,31 @@
                 </div>
             </div>
 
+            <!-- Блок дополнительных работ -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Дополнительные работы</h2>
+                    <div class="header-actions">
+                        <button class="btn btn-secondary" id="addExtraWorkBtn">➕ Добавить работу</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="extraWorksContainer">
+                        <p class="empty-message" id="extraWorksEmpty">Нет дополнительных работ</p>
+                    </div>
+                    <div class="extra-works-summary" id="extraWorksSummary" style="display: none; margin-top: 15px; padding: 12px; background: #f8f9fa; border-radius: 6px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                            <strong>Итого дополнительные работы:</strong>
+                            <span id="extraWorksTotalCost" style="color: #0066cc; font-weight: bold;">0 ₽</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; color: #666;">
+                            <span>Добавляется ко времени:</span>
+                            <span id="extraWorksTotalTime" style="font-weight: bold;">0 ч 0 мин</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="card summary-card">
                 <div class="card-body">
                     <div class="summary-grid">
@@ -174,6 +199,21 @@
                             <select id="trackingOrder" size="5">
                                 <option value="">Выберите заказ</option>
                             </select>
+                        </div>
+                    </div>
+
+                    <!-- Информация о выбранном мастере -->
+                    <div class="form-group" id="selectedMasterInfo" style="display: none; margin-top: 15px;">
+                        <label>Информация о мастере</label>
+                        <div style="padding: 12px; background: #f8f9fa; border-radius: 6px; border: 1px solid #dee2e6;">
+                            <div style="margin-bottom: 8px;">
+                                <strong>Квалификация:</strong>
+                                <span id="selectedMasterLevel" style="color: #0066cc;">-</span>
+                            </div>
+                            <div>
+                                <strong>Навыки:</strong>
+                                <span id="selectedMasterSkills" style="color: #666;">-</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -532,6 +572,17 @@ localStorage.setItem('supabaseKey', 'ваш-anon-key');</pre>
                                     <label for="adminMasterQualification">Уровень квалификации</label>
                                     <input type="number" id="adminMasterQualification" min="1" value="1" required>
                                     <small class="hint">Целое число, минимум 1</small>
+                                </div>
+                            </div>
+                            <!-- Навыки мастера -->
+                            <div class="form-row">
+                                <div class="form-group" style="width: 100%;">
+                                    <label for="adminMasterSkills">Навыки мастера</label>
+                                    <small class="hint">Введите навыки мастера через запятую (например: "Сложные работы с раковинами VN, Термоформинг, Полировка")</small>
+                                    <textarea id="adminMasterSkills"
+                                              rows="3"
+                                              placeholder="Введите навыки мастера через запятую"
+                                              style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-family: inherit; resize: vertical;"></textarea>
                                 </div>
                             </div>
                             <div class="form-row">
