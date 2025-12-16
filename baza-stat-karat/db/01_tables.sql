@@ -56,7 +56,8 @@ CREATE TABLE public.masters (
     name text NOT NULL,
     qualification_level int NOT NULL,
     hourly_rate numeric(10,2),
-    is_active boolean NOT NULL DEFAULT true
+    is_active boolean NOT NULL DEFAULT true,
+    skills_text text -- Навыки мастера (текстовое поле для ручного ввода)
 );
 
 -- Таблица order_execution
@@ -256,3 +257,65 @@ INSERT INTO public.acrylic_operations (name, unit) VALUES
     ('Шлифовка', 'шт'),
     ('Приклейка мойки', 'шт'),
     ('Упаковка и складирование', 'шт');
+
+-- ============================================================
+-- БЛОК 3: Квалификации и навыки мастеров
+-- ============================================================
+
+-- Таблица master_levels (справочник уровней мастеров)
+CREATE TABLE public.master_levels (
+    id smallint PRIMARY KEY,
+    name text NOT NULL,
+    description text,
+    time_factor numeric(3,2) DEFAULT 1.0,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Таблица master_skills (справочник навыков/сложных работ)
+CREATE TABLE public.master_skills (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    code text NOT NULL UNIQUE,
+    name text NOT NULL,
+    description text,
+    is_complex boolean DEFAULT true,
+    is_active boolean NOT NULL DEFAULT true,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Индексы для новых таблиц
+CREATE UNIQUE INDEX idx_master_skills_code ON public.master_skills(code);
+CREATE INDEX idx_master_skills_is_active ON public.master_skills(is_active);
+
+-- Заполнение справочника уровней мастеров (4 уровня)
+INSERT INTO public.master_levels (id, name, description, time_factor) VALUES
+    (1, 'Уровень 1', 'Самый высокий уровень квалификации', 0.85),
+    (2, 'Уровень 2', 'Высокий уровень квалификации', 0.95),
+    (3, 'Уровень 3', 'Средний уровень квалификации', 1.00),
+    (4, 'Уровень 4', 'Начальный уровень квалификации', 1.15);
+
+-- Заполнение справочника навыков (базовый набор)
+INSERT INTO public.master_skills (code, name, description, is_complex) VALUES
+    ('sink_vn', 'Сложные работы с раковинами VN', 'Термоформинг и сложная обработка раковин VN', true),
+    ('sink_ko', 'Сложные работы с мойками КО', 'Установка и обработка моек типа КО', true),
+    ('sink_kg', 'Сложные работы с мойками КГ/КГР', 'Установка и обработка моек типа КГ и КГР', true),
+    ('sink_kr', 'Сложные работы с мойками KR', 'Установка и обработка моек типа KR', true),
+    ('curved_edges', 'Работа с радиусными кромками', 'Фрезеровка и обработка радиусных и фигурных кромок', true),
+    ('complex_gluing', 'Сложная склейка', 'Склейка сложных многокомпонентных изделий', true),
+    ('thermoforming', 'Термоформинг', 'Формовка акрила с применением нагрева', true),
+    ('polishing', 'Финишная полировка', 'Качественная финишная полировка и шлифовка', true);
+
+-- ============================================================
+-- БЛОК 3: Связь мастеров и навыков
+-- ============================================================
+
+-- Таблица связи мастеров и навыков (many-to-many)
+CREATE TABLE public.master_skills_mapping (
+    master_id uuid NOT NULL REFERENCES public.masters(id) ON DELETE CASCADE,
+    skill_id uuid NOT NULL REFERENCES public.master_skills(id) ON DELETE CASCADE,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (master_id, skill_id)
+);
+
+-- Индексы для оптимизации запросов
+CREATE INDEX idx_master_skills_mapping_master ON public.master_skills_mapping(master_id);
+CREATE INDEX idx_master_skills_mapping_skill ON public.master_skills_mapping(skill_id);
