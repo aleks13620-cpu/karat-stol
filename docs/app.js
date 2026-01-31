@@ -1,5 +1,5 @@
 // === Инициализация Supabase ===
-let supabase = null;
+let supabaseClient = null;
 
 // Попытка подключения к Supabase
 function initSupabase() {
@@ -8,7 +8,7 @@ function initSupabase() {
 
     if (supabaseUrl && supabaseKey) {
         try {
-            supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+            supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
             console.log('Supabase подключен');
         } catch (err) {
             console.error('Ошибка подключения к Supabase:', err);
@@ -40,14 +40,14 @@ const DEFAULT_LOCAL_MASTERS = [
 
 // === Загрузка дефолтной часовой ставки из Supabase ===
 async function loadDefaultHourlyRate() {
-    if (!supabase) {
+    if (!supabaseClient) {
         console.warn('Supabase не подключен, используется ставка по умолчанию: 700');
         return 700;
     }
 
     try {
         // Попытка получить дефолтную ставку (is_default = true)
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
             .from('hourly_rates')
             .select('rate_value')
             .eq('is_default', true)
@@ -56,7 +56,7 @@ async function loadDefaultHourlyRate() {
 
         if (error) {
             // Если не нашли дефолтную, берём первую попавшуюся
-            const { data: fallbackData, error: fallbackError } = await supabase
+            const { data: fallbackData, error: fallbackError } = await supabaseClient
                 .from('hourly_rates')
                 .select('rate_value')
                 .limit(1)
@@ -88,14 +88,14 @@ async function loadDefaultHourlyRate() {
 
 // === Загрузка списка камней из Supabase ===
 async function loadStones() {
-    if (!supabase) {
+    if (!supabaseClient) {
         console.warn('Supabase не подключен, камни не загружены');
         return [];
     }
 
     try {
         // Загружаем камни с JOIN к hourly_rates для получения ставки
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
             .from('stones')
             .select(`
                 id,
@@ -135,13 +135,13 @@ async function loadStones() {
 
 // === БЛОК 1: Загрузка операций акрила из Supabase ===
 async function loadAcrylicOperations() {
-    if (!supabase) {
+    if (!supabaseClient) {
         console.warn('Supabase не подключен, используется локальный список операций акрила');
         return ACRYLIC_OPERATIONS_FALLBACK;
     }
 
     try {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
             .from('acrylic_operations')
             .select('id, name, unit')
             .order('created_at');
@@ -166,13 +166,13 @@ async function loadAcrylicOperations() {
 
 // === БЛОК 2: Загрузка типов моек ===
 async function loadSinkTypes() {
-    if (!supabase) {
+    if (!supabaseClient) {
         console.warn('Supabase не подключен, используется локальный список типов моек');
         return SINK_TYPES_FALLBACK;
     }
 
     try {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
             .from('sink_types')
             .select('id, code, name')
             .order('created_at');
@@ -197,13 +197,13 @@ async function loadSinkTypes() {
 
 // === БЛОК 2: Загрузка доп. операций моек ===
 async function loadSinkExtraOperations() {
-    if (!supabase) {
+    if (!supabaseClient) {
         console.warn('Supabase не подключен, используется локальный список доп. операций моек');
         return SINK_EXTRA_OPS_FALLBACK;
     }
 
     try {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
             .from('sink_extra_operations')
             .select(`
                 id,
@@ -242,13 +242,13 @@ async function loadSinkExtraOperations() {
 
 // === БЛОК 3: Загрузка навыков мастеров из Supabase ===
 async function loadMasterSkillsList() {
-    if (!supabase) {
+    if (!supabaseClient) {
         console.warn('Supabase не подключен, используется локальный список навыков');
         return MASTER_SKILLS_FALLBACK;
     }
 
     try {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
             .from('master_skills')
             .select('id, code, name, description, is_complex')
             .eq('is_active', true)
@@ -324,14 +324,14 @@ async function displaySelectedMasterInfo(masterId) {
     const levelEl = document.getElementById('selectedMasterLevel');
     const skillsEl = document.getElementById('selectedMasterSkills');
 
-    if (!masterId || !supabase || !infoBlock) {
+    if (!masterId || !supabaseClient || !infoBlock) {
         if (infoBlock) infoBlock.style.display = 'none';
         return;
     }
 
     try {
         // 1. Загружаем данные мастера (включая навыки)
-        const { data: master, error: masterError } = await supabase
+        const { data: master, error: masterError } = await supabaseClient
             .from('masters')
             .select('id, name, qualification_level, skills_text')
             .eq('id', masterId)
@@ -340,7 +340,7 @@ async function displaySelectedMasterInfo(masterId) {
         if (masterError) throw masterError;
 
         // 2. Загружаем название уровня квалификации
-        const { data: level } = await supabase
+        const { data: level } = await supabaseClient
             .from('master_levels')
             .select('name, description')
             .eq('id', master.qualification_level)
@@ -400,10 +400,10 @@ async function populateAdminMasterSkillsCheckboxes(selectedSkillIds = []) {
 
 // Загрузка навыков конкретного мастера из БД
 async function loadAdminMasterSkillsMapping(masterId) {
-    if (!supabase || !masterId) return [];
+    if (!supabaseClient || !masterId) return [];
 
     try {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
             .from('master_skills_mapping')
             .select('skill_id')
             .eq('master_id', masterId);
@@ -422,11 +422,11 @@ async function loadAdminMasterSkillsMapping(masterId) {
 
 // Сохранение навыков мастера в БД
 async function saveAdminMasterSkillsMapping(masterId, skillIds) {
-    if (!supabase || !masterId) return;
+    if (!supabaseClient || !masterId) return;
 
     try {
         // 1. Удаляем все старые связи
-        const { error: deleteError } = await supabase
+        const { error: deleteError } = await supabaseClient
             .from('master_skills_mapping')
             .delete()
             .eq('master_id', masterId);
@@ -440,7 +440,7 @@ async function saveAdminMasterSkillsMapping(masterId, skillIds) {
                 skill_id: skillId
             }));
 
-            const { error: insertError } = await supabase
+            const { error: insertError } = await supabaseClient
                 .from('master_skills_mapping')
                 .insert(mappings);
 
@@ -1408,7 +1408,7 @@ async function saveCalculation() {
     updateOrderSelects();
 
     // === СОХРАНЕНИЕ В SUPABASE ===
-    if (!supabase) {
+    if (!supabaseClient) {
         console.warn('[SAVE] Supabase не настроен, заказ сохранён только локально');
         alert('Расчёт сохранён локально.\n\nДля сохранения в базу данных настройте подключение к Supabase.');
         return;
@@ -1440,7 +1440,7 @@ async function saveCalculation() {
         console.log('[SAVE] Payload для orders:', orderPayload);
 
         // 2. Сохраняем заказ в таблицу orders
-        const { data: orderData, error: orderError } = await supabase
+        const { data: orderData, error: orderError } = await supabaseClient
             .from('orders')
             .insert([orderPayload])
             .select()
@@ -1474,7 +1474,7 @@ async function saveCalculation() {
         console.log('[SAVE] Payload для order_parameters:', parametersPayload);
 
         // 4. Сохраняем параметры в таблицу order_parameters
-        const { error: paramsError } = await supabase
+        const { error: paramsError } = await supabaseClient
             .from('order_parameters')
             .insert([parametersPayload]);
 
@@ -1499,7 +1499,7 @@ async function saveCalculation() {
         if (acrylicOpsPayload.length > 0) {
             console.log('[SAVE] Payload для order_acrylic_operations:', acrylicOpsPayload);
 
-            const { error: acrylicOpsError } = await supabase
+            const { error: acrylicOpsError } = await supabaseClient
                 .from('order_acrylic_operations')
                 .insert(acrylicOpsPayload);
 
@@ -1527,7 +1527,7 @@ async function saveCalculation() {
         if (sinkOpsPayload.length > 0) {
             console.log('[SAVE] Payload для order_sink_operations:', sinkOpsPayload);
 
-            const { error: sinkOpsError } = await supabase
+            const { error: sinkOpsError } = await supabaseClient
                 .from('order_sink_operations')
                 .insert(sinkOpsPayload);
 
@@ -1552,12 +1552,12 @@ async function saveCalculation() {
 
 // Найти или создать мастера по имени
 async function findOrCreateMaster(masterName) {
-    if (!supabase) return null;
+    if (!supabaseClient) return null;
     if (!masterName || !masterName.trim()) return null;
 
     try {
         // Ищем существующего мастера
-        const { data: existingMasters, error: searchError } = await supabase
+        const { data: existingMasters, error: searchError } = await supabaseClient
             .from('masters')
             .select('id, name')
             .eq('name', masterName.trim())
@@ -1575,7 +1575,7 @@ async function findOrCreateMaster(masterName) {
 
         // Мастер не найден - создаём нового
         // TODO: qualification_level по умолчанию = 1, в будущем брать из справочника
-        const { data: newMaster, error: insertError } = await supabase
+        const { data: newMaster, error: insertError } = await supabaseClient
             .from('masters')
             .insert([{
                 name: masterName.trim(),
@@ -1601,11 +1601,11 @@ async function findOrCreateMaster(masterName) {
 
 // Найти order_id по номеру заказа
 async function findOrderId(orderNumber) {
-    if (!supabase) return null;
+    if (!supabaseClient) return null;
     if (!orderNumber || !orderNumber.trim()) return null;
 
     try {
-        const { data: orders, error } = await supabase
+        const { data: orders, error } = await supabaseClient
             .from('orders')
             .select('id')
             .eq('order_number', orderNumber.trim())
@@ -1633,7 +1633,7 @@ async function findOrderId(orderNumber) {
 // Синхронизация записи журнала работ в Supabase
 async function syncWorkLogEntryToSupabase(entry) {
     // Проверка настроек Supabase
-    if (!supabase) {
+    if (!supabaseClient) {
         console.warn('[WORKLOG_SYNC] Supabase не настроен, запись остаётся только локально', entry);
         return;
     }
@@ -1678,7 +1678,7 @@ async function syncWorkLogEntryToSupabase(entry) {
 
         if (masterId) {
             try {
-                const { data: masterData } = await supabase
+                const { data: masterData } = await supabaseClient
                     .from('masters')
                     .select('qualification_level, skills_text')
                     .eq('id', masterId)
@@ -1707,7 +1707,7 @@ async function syncWorkLogEntryToSupabase(entry) {
         console.log('[WORKLOG_SYNC] Payload for order_execution:', executionPayload);
 
         // INSERT в order_execution
-        const { data: executionData, error: executionError } = await supabase
+        const { data: executionData, error: executionError } = await supabaseClient
             .from('order_execution')
             .insert([executionPayload])
             .select()
@@ -1736,7 +1736,7 @@ async function syncWorkLogEntryToSupabase(entry) {
 
             console.log('[WORKLOG_SYNC] Payload for pauses:', pausesPayload);
 
-            const { error: pausesError } = await supabase
+            const { error: pausesError } = await supabaseClient
                 .from('pauses')
                 .insert(pausesPayload);
 
@@ -2621,7 +2621,7 @@ function computeActualTimeForOrder(orderId, masterName = null) {
 function isSupabaseConfigured() {
     const supabaseUrl = localStorage.getItem('supabaseUrl') || '';
     const supabaseKey = localStorage.getItem('supabaseKey') || '';
-    return !!(supabaseUrl && supabaseKey && supabase);
+    return !!(supabaseUrl && supabaseKey && supabaseClient);
 }
 
 // === Загрузка данных анализа из Supabase ===
@@ -2632,7 +2632,7 @@ async function loadAnalysisDataFromSupabase(filters) {
         console.log('[ANALYSIS_SUPABASE] Загрузка данных с фильтрами:', filters);
 
         // Формируем запрос к order_execution с JOIN'ами
-        let query = supabase
+        let query = supabaseClient
             .from('order_execution')
             .select(`
                 id,
@@ -2683,7 +2683,7 @@ async function loadAnalysisDataFromSupabase(filters) {
         let pausesMap = {};
 
         if (executionIds.length > 0) {
-            const { data: pauses, error: pausesError } = await supabase
+            const { data: pauses, error: pausesError } = await supabaseClient
                 .from('pauses')
                 .select('order_execution_id, duration_min, reason')
                 .in('order_execution_id', executionIds);
@@ -2816,10 +2816,10 @@ async function loadAnalysisDataFromSupabase(filters) {
 
 // === Загрузка списка мастеров для фильтра ===
 async function loadMastersListFromSupabase(onlyActive = true) {
-    if (!supabase) return [];
+    if (!supabaseClient) return [];
 
     try {
-        let query = supabase
+        let query = supabaseClient
             .from('masters')
             .select('id, name, qualification_level, is_active, created_at')
             .order('name');
@@ -2893,13 +2893,13 @@ async function populateMasterSelect() {
 
 // === Загрузка журнала работ из Supabase с фильтрами ===
 async function loadWorkLogFromSupabase(filters) {
-    if (!supabase) return null;
+    if (!supabaseClient) return null;
 
     try {
         console.log('[WORKLOG_SUPABASE] Загрузка журнала работ с фильтрами:', filters);
 
         // Базовый запрос с JOIN к masters, orders, и pauses
-        let query = supabase
+        let query = supabaseClient
             .from('order_execution')
             .select(`
                 id,
@@ -3168,7 +3168,7 @@ async function updateWorkLog() {
         // Если задан номер заказа, ищем orderId
         if (filters.orderNumber) {
             try {
-                const { data: orders, error } = await supabase
+                const { data: orders, error } = await supabaseClient
                     .from('orders')
                     .select('id')
                     .ilike('order_number', `%${filters.orderNumber}%`);
@@ -3970,7 +3970,7 @@ async function saveAdminMaster() {
         if (masterId) {
             // Обновление существующего мастера
             console.log('[ADMIN] Обновление мастера:', masterId);
-            const { error } = await supabase
+            const { error } = await supabaseClient
                 .from('masters')
                 .update({
                     name: name,
@@ -3986,7 +3986,7 @@ async function saveAdminMaster() {
         } else {
             // Создание нового мастера
             console.log('[ADMIN] Создание нового мастера');
-            const { data, error } = await supabase
+            const { data, error } = await supabaseClient
                 .from('masters')
                 .insert([{
                     name: name,
@@ -4040,7 +4040,7 @@ async function toggleAdminMasterStatus(masterId) {
 
     try {
         console.log(`[ADMIN] Изменение статуса мастера ${masterId} на ${newStatus}`);
-        const { error } = await supabase
+        const { error } = await supabaseClient
             .from('masters')
             .update({ is_active: newStatus })
             .eq('id', masterId)
@@ -4117,14 +4117,14 @@ function initAdminRatesEventHandlers() {
 
 // === Загрузка списка ставок ===
 async function loadAdminRates() {
-    if (!supabase) {
+    if (!supabaseClient) {
         console.warn('[ADMIN_RATES] Supabase не настроен');
         return;
     }
 
     try {
         console.log('[ADMIN_RATES] Загрузка ставок');
-        const { data: rates, error } = await supabase
+        const { data: rates, error } = await supabaseClient
             .from('hourly_rates')
             .select('*')
             .order('rate_value', { ascending: false });
@@ -4276,7 +4276,7 @@ async function saveAdminRate() {
         // Если устанавливаем новую дефолтную ставку, снимаем флаг у других
         if (isDefault) {
             // Снимаем флаг is_default со всех записей
-            let query = supabase
+            let query = supabaseClient
                 .from('hourly_rates')
                 .update({ is_default: false });
 
@@ -4296,7 +4296,7 @@ async function saveAdminRate() {
         if (rateId) {
             // Обновление существующей ставки
             console.log('[ADMIN_RATES] Обновление ставки:', rateId);
-            const { error } = await supabase
+            const { error } = await supabaseClient
                 .from('hourly_rates')
                 .update({
                     name: rateName,
@@ -4312,7 +4312,7 @@ async function saveAdminRate() {
         } else {
             // Создание новой ставки
             console.log('[ADMIN_RATES] Создание новой ставки');
-            const { error } = await supabase
+            const { error } = await supabaseClient
                 .from('hourly_rates')
                 .insert([{
                     name: rateName,
@@ -4360,7 +4360,7 @@ async function setDefaultRate(rateId) {
         console.log(`[ADMIN_RATES] Установка ставки ${rateId} как дефолтной`);
 
         // Снимаем флаг у всех ставок (используем .not для обязательного WHERE)
-        const { error: updateError } = await supabase
+        const { error: updateError } = await supabaseClient
             .from('hourly_rates')
             .update({ is_default: false })
             .not('id', 'is', null)
@@ -4369,7 +4369,7 @@ async function setDefaultRate(rateId) {
         if (updateError) throw updateError;
 
         // Устанавливаем флаг для выбранной ставки
-        const { error } = await supabase
+        const { error } = await supabaseClient
             .from('hourly_rates')
             .update({ is_default: true })
             .eq('id', rateId)
@@ -4415,7 +4415,7 @@ async function loadRatesIntoSelect() {
     const rateSelect = document.getElementById('rateSelect');
     if (!rateSelect) return;
 
-    if (!supabase) {
+    if (!supabaseClient) {
         console.warn('[RATES_SELECT] Supabase не подключен, используется дефолтная ставка');
         rateSelect.innerHTML = `<option value="${state.currentRate}">${state.currentRate} ₽/час (по умолчанию)</option>`;
         rateSelect.value = state.currentRate;
@@ -4424,7 +4424,7 @@ async function loadRatesIntoSelect() {
 
     try {
         console.log('[RATES_SELECT] Загрузка ставок в select');
-        const { data: rates, error } = await supabase
+        const { data: rates, error } = await supabaseClient
             .from('hourly_rates')
             .select('id, name, material_type, rate_value, is_default')
             .order('rate_value', { ascending: false });
