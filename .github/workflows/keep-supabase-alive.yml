@@ -1,0 +1,28 @@
+name: Keep Supabase Alive
+
+on:
+  schedule:
+    # Run every 6 days at 10:00 UTC to prevent Supabase free tier from pausing
+    - cron: '0 10 */6 * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  ping-supabase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase to keep it alive
+        run: |
+          echo "Pinging Supabase to prevent auto-pause..."
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://lpalemqoflzvlkuuroyk.supabase.co/rest/v1/hourly_rates?select=id&limit=1" \
+            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxwYWxlbXFvZmx6dmxrdXVyb3lrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQyMTk1MTgsImV4cCI6MjA3OTc5NTUxOH0.KjeAW4mLyAdgNL1w7k0lwMRU_ezy5Arf1UfVbfYzsBE" \
+            -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxwYWxlbXFvZmx6dmxrdXVyb3lrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQyMTk1MTgsImV4cCI6MjA3OTc5NTUxOH0.KjeAW4mLyAdgNL1w7k0lwMRU_ezy5Arf1UfVbfYzsBE")
+
+          echo "Response code: $response"
+
+          if [ "$response" -eq 200 ] || [ "$response" -eq 206 ]; then
+            echo "Supabase is alive and responding!"
+          else
+            echo "Warning: Supabase returned status $response"
+            exit 1
+          fi
