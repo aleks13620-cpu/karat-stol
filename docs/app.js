@@ -2821,7 +2821,7 @@ async function loadMastersListFromSupabase(onlyActive = true) {
     try {
         let query = supabaseClient
             .from('masters')
-            .select('id, name, qualification_level, is_active, created_at')
+            .select('id, name, qualification_level, is_active, created_at, skills_text')
             .order('name');
 
         // Фильтрация только активных, если требуется
