@@ -1,3 +1,29 @@
+// === Retry-обёртка для нестабильных сетевых запросов к Supabase ===
+async function withRetry(fn, maxAttempts = 3, delayMs = 1500) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            const result = await fn();
+            // Повторяем если Supabase вернул сетевую ошибку в поле error
+            if (result && result.error) {
+                const msg = (result.error.message || '').toLowerCase();
+                const isNet = msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('http2');
+                if (isNet && attempt < maxAttempts) {
+                    console.warn(`[RETRY] Попытка ${attempt}/${maxAttempts}: ${result.error.message}`);
+                    await new Promise(r => setTimeout(r, delayMs * attempt));
+                    continue;
+                }
+            }
+            return result;
+        } catch (err) {
+            const msg = (err.message || err.toString()).toLowerCase();
+            const isNet = msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('http2');
+            if (!isNet || attempt === maxAttempts) throw err;
+            console.warn(`[RETRY] Попытка ${attempt}/${maxAttempts}: ${err.message}`);
+            await new Promise(r => setTimeout(r, delayMs * attempt));
+        }
+    }
+}
+
 // === Инициализация Supabase ===
 let supabaseClient = null;
 
@@ -47,20 +73,24 @@ async function loadDefaultHourlyRate() {
 
     try {
         // Попытка получить дефолтную ставку (is_default = true)
-        const { data, error } = await supabaseClient
-            .from('hourly_rates')
-            .select('rate_value')
-            .eq('is_default', true)
-            .limit(1)
-            .single();
+        const { data, error } = await withRetry(() =>
+            supabaseClient
+                .from('hourly_rates')
+                .select('rate_value')
+                .eq('is_default', true)
+                .limit(1)
+                .single()
+        );
 
         if (error) {
             // Если не нашли дефолтную, берём первую попавшуюся
-            const { data: fallbackData, error: fallbackError } = await supabaseClient
-                .from('hourly_rates')
-                .select('rate_value')
-                .limit(1)
-                .single();
+            const { data: fallbackData, error: fallbackError } = await withRetry(() =>
+                supabaseClient
+                    .from('hourly_rates')
+                    .select('rate_value')
+                    .limit(1)
+                    .single()
+            );
 
             if (fallbackError) {
                 console.error('Ошибка загрузки ставки из Supabase:', fallbackError);
@@ -95,18 +125,20 @@ async function loadStones() {
 
     try {
         // Загружаем камни с JOIN к hourly_rates для получения ставки
-        const { data, error } = await supabaseClient
-            .from('stones')
-            .select(`
-                id,
-                name,
-                hourly_rate_id,
-                hourly_rates:hourly_rate_id (
-                    rate_value
-                )
-            `)
-            .eq('is_active', true)
-            .order('name');
+        const { data, error } = await withRetry(() =>
+            supabaseClient
+                .from('stones')
+                .select(`
+                    id,
+                    name,
+                    hourly_rate_id,
+                    hourly_rates:hourly_rate_id (
+                        rate_value
+                    )
+                `)
+                .eq('is_active', true)
+                .order('name')
+        );
 
         if (error) {
             console.error('Ошибка загрузки камней из Supabase:', error);
@@ -1442,11 +1474,13 @@ async function saveCalculation() {
         console.log('[SAVE] Payload для orders:', orderPayload);
 
         // 2. Сохраняем заказ в таблицу orders
-        const { data: orderData, error: orderError } = await supabaseClient
-            .from('orders')
-            .upsert([orderPayload], { onConflict: 'order_number' })
-            .select()
-            .single();
+        const { data: orderData, error: orderError } = await withRetry(() =>
+            supabaseClient
+                .from('orders')
+                .upsert([orderPayload], { onConflict: 'order_number' })
+                .select()
+                .single()
+        );
 
         if (orderError) {
             throw new Error(`Ошибка сохранения заказа: ${orderError.message}`);
@@ -1717,11 +1751,13 @@ async function syncWorkLogEntryToSupabase(entry) {
         console.log('[WORKLOG_SYNC] Payload for order_execution:', executionPayload);
 
         // INSERT в order_execution
-        const { data: executionData, error: executionError } = await supabaseClient
-            .from('order_execution')
-            .insert([executionPayload])
-            .select()
-            .single();
+        const { data: executionData, error: executionError } = await withRetry(() =>
+            supabaseClient
+                .from('order_execution')
+                .insert([executionPayload])
+                .select()
+                .single()
+        );
 
         if (executionError) {
             console.error('[WORKLOG_SYNC] Error inserting order_execution', executionError);
@@ -2937,7 +2973,7 @@ async function loadWorkLogFromSupabase(filters) {
             query = query.eq('order_id', filters.orderId);
         }
 
-        const { data: executionRecords, error } = await query;
+        const { data: executionRecords, error } = await withRetry(() => query);
 
         if (error) throw error;
 
