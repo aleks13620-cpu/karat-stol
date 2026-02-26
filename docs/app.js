@@ -2928,9 +2928,7 @@ async function loadWorkLogFromSupabase(filters) {
             query = query.gte('fact_start_at', filters.dateFrom);
         }
         if (filters.dateTo) {
-            const dateToEnd = new Date(filters.dateTo);
-            dateToEnd.setHours(23, 59, 59, 999);
-            query = query.lte('fact_start_at', dateToEnd.toISOString());
+            query = query.lte('fact_start_at', filters.dateTo);
         }
         if (filters.masterId) {
             query = query.eq('master_id', filters.masterId);
@@ -3018,7 +3016,7 @@ function getWorkLogFilters() {
     const masterSelectEl = document.getElementById('workLogMasterSelect');
     const orderSearchEl = document.getElementById('workLogOrderSearch');
 
-    const dateFrom = dateFromEl && dateFromEl.value ? new Date(dateFromEl.value).toISOString() : null;
+    const dateFrom = dateFromEl && dateFromEl.value ? new Date(dateFromEl.value + 'T00:00:00').toISOString() : null;
     const dateTo = dateToEl && dateToEl.value ? new Date(dateToEl.value + 'T23:59:59').toISOString() : null;
     const masterValue = masterSelectEl ? masterSelectEl.value : '';
     const orderNumber = orderSearchEl ? orderSearchEl.value.trim() : '';
@@ -3139,7 +3137,10 @@ async function populateWorkLogMasterSelect() {
 }
 
 // === Инициализация фильтров журнала работ ===
+let workLogFiltersInitialized = false;
 async function initWorkLogFilters() {
+    if (workLogFiltersInitialized) return;
+    workLogFiltersInitialized = true;
     console.log('[WORKLOG] Инициализация фильтров');
 
     // Обработчик кнопки "Применить"
@@ -3206,6 +3207,14 @@ async function updateWorkLog() {
 
     // Fallback: локальный режим
     if (!isSupabaseMode) {
+        if (isSupabaseConfigured()) {
+            // Supabase настроен, но не ответил — не показываем устаревшие локальные данные
+            const tbody = document.getElementById('workLogTableBody');
+            if (tbody) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#c0392b;padding:16px;">Ошибка загрузки данных из Supabase. Проверьте соединение.</td></tr>';
+            }
+            return;
+        }
         console.log('[WORKLOG] Локальный режим');
         const filters = getWorkLogFilters();
         workLogEntries = applyFiltersToLocalWorkLog(filters);
@@ -3797,7 +3806,10 @@ async function initAdminPanel() {
 }
 
 // === Инициализация обработчиков событий ===
+let adminEventHandlersInitialized = false;
 function initAdminEventHandlers() {
+    if (adminEventHandlersInitialized) return;
+    adminEventHandlersInitialized = true;
     // Кнопка "Добавить мастера"
     const addBtn = document.getElementById('adminAddMasterBtn');
     if (addBtn) {
