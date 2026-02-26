@@ -2,8 +2,9 @@ name: Keep Supabase Alive
 
 on:
   schedule:
-    # Run every 6 days at 10:00 UTC to prevent Supabase free tier from pausing
-    - cron: '0 10 */6 * *'
+    # Run every 3 days at 10:00 UTC to prevent Supabase free tier from pausing
+    # (Supabase pauses after 7 days inactivity — 3 days gives 2x safety margin)
+    - cron: '0 10 */3 * *'
   workflow_dispatch: # Allow manual trigger
 
 jobs:
