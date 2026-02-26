@@ -997,6 +997,8 @@ function initTabs() {
                 updateAnalysis();
             } else if (tabId === 'admin') {
                 initAdminPanel();
+            } else if (tabId === 'worklog') {
+                updateWorkLog();
             }
         });
     });
@@ -1442,7 +1444,7 @@ async function saveCalculation() {
         // 2. Сохраняем заказ в таблицу orders
         const { data: orderData, error: orderError } = await supabaseClient
             .from('orders')
-            .insert([orderPayload])
+            .upsert([orderPayload], { onConflict: 'order_number' })
             .select()
             .single();
 
