@@ -1641,10 +1641,18 @@ async function syncWorkLogEntryToSupabase(entry) {
     }
 
     try {
-        // Получаем order_id
-        const orderId = await findOrderId(entry.orderName || entry.orderId);
+        // Получаем order_id — ищем реальный order_number из state.calculations,
+        // т.к. orderName в сессии содержит дату ("тест 3/1 (2026-02-26)"), которой нет в БД
+        let orderNumberToSearch = entry.orderName;
+        if (entry.orderId) {
+            const localCalc = state.calculations.find(c => String(c.id) === String(entry.orderId));
+            if (localCalc) {
+                orderNumberToSearch = localCalc.orderNumber;
+            }
+        }
+        const orderId = await findOrderId(orderNumberToSearch);
         if (!orderId) {
-            console.warn('[WORKLOG_SYNC] Не удалось найти order_id для заказа:', entry.orderName);
+            console.warn('[WORKLOG_SYNC] Не удалось найти order_id для заказа:', orderNumberToSearch);
             // Не падаем с ошибкой, просто не синхронизируем
             return;
         }
