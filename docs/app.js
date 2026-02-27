@@ -980,6 +980,7 @@ async function initApp() {
     initExportImport();
     await initAnalysisFilters(); // Инициализация фильтров анализа
     initWorkshopLoad(); // Инициализация нагрузки цеха
+    initCorrelation();  // Инициализация корреляционного анализа
     await initWorkLogFilters(); // Инициализация фильтров журнала работ
     initCompleteOrderSection(); // Инициализация секции завершения заказа
     updateUI();
@@ -1031,6 +1032,7 @@ function initTabs() {
             } else if (tabId === 'analysis') {
                 updateAnalysis();
                 loadWorkshopLoad(null);
+                updateCorrelation();
             } else if (tabId === 'admin') {
                 initAdminPanel();
             } else if (tabId === 'worklog') {
@@ -4672,6 +4674,148 @@ function renderOrderAnalysisTable(orderAnalysisData) {
     tbody.innerHTML = rows.join('');
 }
 
+// === Корреляции: что влияет на срок ===
+
+async function loadCorrelationData() {
+    if (!isSupabaseConfigured()) return null;
+
+    const { data: orders, error: ordErr } = await withRetry(() =>
+        supabaseClient
+            .from('orders')
+            .select('id, theoretical_time_total_hours, order_parameters(countertop_sqm, sink_round_pcs, sink_rect_pcs)')
+            .eq('status', 'completed')
+    );
+    if (ordErr || !orders?.length) return null;
+
+    const orderIds = orders.map(o => o.id);
+    const { data: execs, error: execErr } = await withRetry(() =>
+        supabaseClient
+            .from('order_execution')
+            .select('id, order_id, fact_start_at, fact_end_at, masters(qualification_level)')
+            .in('order_id', orderIds)
+            .not('fact_end_at', 'is', null)
+    );
+    if (execErr || !execs?.length) return null;
+
+    const execIds = execs.map(e => e.id);
+    const pausesMap = {};
+    if (execIds.length) {
+        const { data: pauses } = await withRetry(() =>
+            supabaseClient.from('pauses').select('order_execution_id, duration_min').in('order_execution_id', execIds)
+        );
+        (pauses || []).forEach(p => {
+            pausesMap[p.order_execution_id] = (pausesMap[p.order_execution_id] || 0) + (p.duration_min || 0);
+        });
+    }
+
+    const orderActual = {};
+    execs.forEach(exec => {
+        if (!exec.fact_start_at || !exec.fact_end_at) return;
+        const netMin = (new Date(exec.fact_end_at) - new Date(exec.fact_start_at)) / 60000 - (pausesMap[exec.id] || 0);
+        if (!orderActual[exec.order_id]) orderActual[exec.order_id] = { min: 0, quals: [] };
+        orderActual[exec.order_id].min += netMin;
+        const ql = exec.masters?.qualification_level;
+        if (ql) orderActual[exec.order_id].quals.push(ql);
+    });
+
+    return orders.map(order => {
+        const actual = orderActual[order.id];
+        if (!actual || actual.min <= 0) return null;
+        const theoryMin = (order.theoretical_time_total_hours || 0) * 60;
+        if (theoryMin <= 0) return null;
+        const params = order.order_parameters || {};
+        const avgQual = actual.quals.length
+            ? Math.round(actual.quals.reduce((a, b) => a + b, 0) / actual.quals.length)
+            : null;
+        return {
+            sqm:       parseFloat(params.countertop_sqm) || 0,
+            sinks:     (params.sink_round_pcs || 0) + (params.sink_rect_pcs || 0),
+            qualLevel: avgQual,
+            actualMin: Math.round(actual.min),
+            theoryMin,
+            deviation: parseFloat(((actual.min - theoryMin) / theoryMin * 100).toFixed(1))
+        };
+    }).filter(Boolean);
+}
+
+function correlationGroupBy(data, keyFn, labelMap) {
+    const groups = {};
+    data.forEach(item => {
+        const key = keyFn(item);
+        if (!groups[key]) groups[key] = { label: labelMap[key] || key, items: [] };
+        groups[key].items.push(item);
+    });
+    return Object.entries(groups)
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([, g]) => g);
+}
+
+function correlationDeviationBar(dev) {
+    const v = parseFloat(dev);
+    const color = v > 15 ? '#e74c3c' : v > 5 ? '#f39c12' : v < -5 ? '#2980b9' : '#27ae60';
+    const width = Math.min(Math.abs(v) * 2, 100);
+    return `<span style="display:inline-flex;align-items:center;gap:6px;">
+        <span style="display:inline-block;width:${Math.max(width,4)}px;height:10px;background:${color};border-radius:3px;"></span>
+        <strong style="color:${color}">${v > 0 ? '+' : ''}${dev}%</strong>
+    </span>`;
+}
+
+function renderCorrelationSection(title, groups) {
+    if (!groups.length) return '';
+    const avgDev = items => (items.map(i => i.deviation).reduce((a, b) => a + b, 0) / items.length).toFixed(1);
+    const rows = groups.map(g =>
+        `<tr>
+            <td style="padding:6px 10px;">${g.label}</td>
+            <td style="padding:6px 10px;text-align:center;">${g.items.length}</td>
+            <td style="padding:6px 10px;">${correlationDeviationBar(avgDev(g.items))}</td>
+        </tr>`
+    ).join('');
+    return `<div style="margin-bottom:24px;">
+        <h4 style="margin-bottom:8px;color:#555;">${title}</h4>
+        <table style="width:100%;border-collapse:collapse;">
+            <thead><tr style="background:#f5f5f5;">
+                <th style="padding:6px 10px;text-align:left;">Группа</th>
+                <th style="padding:6px 10px;text-align:center;">Заказов</th>
+                <th style="padding:6px 10px;text-align:left;">Ср. отклонение факта от теории</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+        </table>
+    </div>`;
+}
+
+async function updateCorrelation() {
+    const content = document.getElementById('correlationContent');
+    if (!content) return;
+    content.innerHTML = '<p style="color:#aaa;text-align:center;padding:16px;">Загрузка...</p>';
+
+    const data = await loadCorrelationData();
+    if (!data || !data.length) {
+        content.innerHTML = '<p style="color:#aaa;text-align:center;padding:16px;">Нет данных. Завершите несколько заказов для появления статистики.</p>';
+        return;
+    }
+
+    const sqmGroups = correlationGroupBy(data,
+        i => i.sqm < 1 ? '0' : i.sqm < 2 ? '1' : i.sqm < 3 ? '2' : i.sqm < 5 ? '3' : '4',
+        { '0':'до 1 м²', '1':'1–2 м²', '2':'2–3 м²', '3':'3–5 м²', '4':'5+ м²' }
+    );
+    const sinkGroups = correlationGroupBy(data,
+        i => String(Math.min(i.sinks, 4)),
+        { '0':'без моек', '1':'1 мойка', '2':'2 мойки', '3':'3 мойки', '4':'4+ мойки' }
+    );
+    const qualGroups = correlationGroupBy(
+        data.filter(d => d.qualLevel !== null),
+        i => String(i.qualLevel),
+        { '1':'Уровень 1', '2':'Уровень 2', '3':'Уровень 3', '4':'Уровень 4' }
+    );
+
+    let html = `<p style="margin-bottom:16px;color:#555;">Завершённых заказов в анализе: <strong>${data.length}</strong></p>`;
+    html += renderCorrelationSection('📐 По площади столешницы', sqmGroups);
+    html += renderCorrelationSection('🚰 По количеству моек', sinkGroups);
+    if (qualGroups.length) html += renderCorrelationSection('👷 По квалификации мастера', qualGroups);
+
+    content.innerHTML = html;
+}
+
 // === Нагрузка цеха ===
 
 async function loadWorkshopLoad(targetDate) {
@@ -4833,6 +4977,11 @@ function buildWorkshopChart(allOrders) {
     ).join('');
 
     section.style.display = 'block';
+}
+
+function initCorrelation() {
+    const btn = document.getElementById('correlationRefreshBtn');
+    if (btn) btn.addEventListener('click', updateCorrelation);
 }
 
 function initWorkshopLoad() {
