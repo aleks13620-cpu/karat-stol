@@ -5105,14 +5105,13 @@ async function loadWorkshopLoad(targetDate) {
 
         // Фильтрация: заказ был активен на filterDate
         const filtered = (orders || []).filter(order => {
-            // Заказы в производстве — показываем всегда (даже без сессий)
-            if (order.status === 'in_production') return true;
-
             const sessions = order.order_execution || [];
             const starts = sessions.map(s => new Date(s.fact_start_at)).filter(Boolean);
-            const minStart = starts.length ? new Date(Math.min(...starts)) : null;
+            // Если сессий нет — берём дату создания заказа как точку отсчёта
+            const minStart = starts.length ? new Date(Math.min(...starts)) : new Date(order.created_at);
             if (!minStart || minStart > filterDate) return false;
 
+            if (order.status === 'in_production') return true;
             if (order.completed_at && new Date(order.completed_at) >= filterDate) return true;
             return false;
         });
@@ -5209,7 +5208,7 @@ function buildWorkshopChart(allOrders) {
         return allOrders.filter(order => {
             const sessions = order.order_execution || [];
             const starts = sessions.map(s => new Date(s.fact_start_at)).filter(Boolean);
-            const minStart = starts.length ? new Date(Math.min(...starts)) : null;
+            const minStart = starts.length ? new Date(Math.min(...starts)) : new Date(order.created_at);
             if (!minStart || minStart > day) return false;
             if (order.status === 'in_production') return true;
             if (order.completed_at && new Date(order.completed_at) >= day) return true;
