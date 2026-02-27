@@ -3925,6 +3925,10 @@ async function initAdminPanel() {
 
     // Инициализация секции ставок
     await initAdminRates();
+
+    // Инициализация секции атрибутов (гипотезы)
+    initAdminAttributesEventHandlers();
+    await loadAdminAttributes();
 }
 
 // === Инициализация обработчиков событий ===
@@ -4672,6 +4676,154 @@ function renderOrderAnalysisTable(orderAnalysisData) {
     });
 
     tbody.innerHTML = rows.join('');
+}
+
+// === Управление атрибутами изделий (Гипотезы) ===
+
+let adminAttributesList = [];
+let adminAttributeEditId = null;
+let adminAttributesHandlersInitialized = false;
+
+async function loadAdminAttributes() {
+    if (!supabaseClient) return;
+    const { data, error } = await withRetry(() =>
+        supabaseClient.from('order_attribute_definitions').select('*').order('created_at')
+    );
+    if (error) { console.error('[ATTR_ADMIN] Ошибка загрузки:', error); return; }
+    adminAttributesList = data || [];
+    renderAdminAttributesTable();
+}
+
+function renderAdminAttributesTable() {
+    const tbody = document.getElementById('adminAttributesTableBody');
+    if (!tbody) return;
+    if (!adminAttributesList.length) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#aaa;">Нет параметров</td></tr>';
+        return;
+    }
+    tbody.innerHTML = adminAttributesList.map(attr => {
+        const options = Array.isArray(attr.options) ? attr.options.join(', ') : (attr.options ? JSON.parse(attr.options).join(', ') : '—');
+        const statusBadge = attr.is_hypothesis
+            ? '<span style="color:#e67e22;">🔬 Гипотеза</span>'
+            : '<span style="color:#27ae60;">✅ Подтверждено</span>';
+        const activeBadge = attr.is_active
+            ? '<span style="color:#27ae60;">Да</span>'
+            : '<span style="color:#aaa;">Нет</span>';
+        return `<tr>
+            <td><strong>${attr.name}</strong><br><small style="color:#aaa;">${attr.code}</small></td>
+            <td style="font-size:0.85em;">${options}</td>
+            <td>${statusBadge}</td>
+            <td>${activeBadge}</td>
+            <td>
+                <button class="btn btn-secondary btn-small" onclick="editAdminAttribute('${attr.id}')">✏️</button>
+                ${attr.is_hypothesis
+                    ? `<button class="btn btn-success btn-small" onclick="confirmAttributeHypothesis('${attr.id}')" title="Подтвердить гипотезу">✅</button>`
+                    : ''}
+                <button class="btn btn-danger btn-small" onclick="deleteAdminAttribute('${attr.id}')">🗑️</button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function showAdminAttributeForm(id) {
+    const card = document.getElementById('adminAttributeFormCard');
+    const title = document.getElementById('adminAttributeFormTitle');
+    if (!card) return;
+    adminAttributeEditId = id || null;
+    title.textContent = id ? 'Редактировать параметр' : 'Новый параметр';
+
+    if (id) {
+        const attr = adminAttributesList.find(a => a.id === id);
+        if (attr) {
+            document.getElementById('adminAttributeId').value = attr.id;
+            document.getElementById('adminAttributeName').value = attr.name;
+            document.getElementById('adminAttributeCode').value = attr.code;
+            document.getElementById('adminAttributeDescription').value = attr.description || '';
+            const opts = Array.isArray(attr.options) ? attr.options : (attr.options ? JSON.parse(attr.options) : []);
+            document.getElementById('adminAttributeOptions').value = opts.join(', ');
+            document.getElementById('adminAttributeIsHypothesis').checked = attr.is_hypothesis;
+            document.getElementById('adminAttributeIsActive').checked = attr.is_active;
+        }
+    } else {
+        document.getElementById('adminAttributeForm').reset();
+        document.getElementById('adminAttributeId').value = '';
+        document.getElementById('adminAttributeIsHypothesis').checked = true;
+        document.getElementById('adminAttributeIsActive').checked = true;
+    }
+    card.style.display = 'block';
+    card.scrollIntoView({ behavior: 'smooth' });
+}
+
+function hideAdminAttributeForm() {
+    const card = document.getElementById('adminAttributeFormCard');
+    if (card) card.style.display = 'none';
+    adminAttributeEditId = null;
+}
+
+async function saveAdminAttribute(e) {
+    e.preventDefault();
+    const id = document.getElementById('adminAttributeId').value;
+    const name = document.getElementById('adminAttributeName').value.trim();
+    const code = document.getElementById('adminAttributeCode').value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    const description = document.getElementById('adminAttributeDescription').value.trim();
+    const optionsRaw = document.getElementById('adminAttributeOptions').value.trim();
+    const is_hypothesis = document.getElementById('adminAttributeIsHypothesis').checked;
+    const is_active = document.getElementById('adminAttributeIsActive').checked;
+
+    if (!name || !code) { alert('Заполните название и код'); return; }
+
+    const options = optionsRaw ? optionsRaw.split(',').map(s => s.trim()).filter(Boolean) : null;
+    const value_type = options ? 'select' : 'text';
+    const payload = { name, code, description: description || null, value_type, options, is_hypothesis, is_active };
+
+    let error;
+    if (id) {
+        ({ error } = await withRetry(() => supabaseClient.from('order_attribute_definitions').update(payload).eq('id', id)));
+    } else {
+        ({ error } = await withRetry(() => supabaseClient.from('order_attribute_definitions').insert([payload])));
+    }
+
+    if (error) { alert('Ошибка: ' + error.message); return; }
+    hideAdminAttributeForm();
+    await loadAdminAttributes();
+}
+
+function editAdminAttribute(id) { showAdminAttributeForm(id); }
+
+async function confirmAttributeHypothesis(id) {
+    const attr = adminAttributesList.find(a => a.id === id);
+    if (!attr) return;
+    if (!confirm(`Подтвердить гипотезу "${attr.name}" как доказанный факт?`)) return;
+    const { error } = await withRetry(() =>
+        supabaseClient.from('order_attribute_definitions').update({ is_hypothesis: false }).eq('id', id)
+    );
+    if (error) { alert('Ошибка: ' + error.message); return; }
+    await loadAdminAttributes();
+}
+
+async function deleteAdminAttribute(id) {
+    const attr = adminAttributesList.find(a => a.id === id);
+    if (!attr) return;
+    if (!confirm(`Удалить параметр "${attr.name}"?\n\nВсе собранные значения по этому параметру также будут удалены.`)) return;
+    const { error } = await withRetry(() =>
+        supabaseClient.from('order_attribute_definitions').delete().eq('id', id)
+    );
+    if (error) { alert('Ошибка: ' + error.message); return; }
+    await loadAdminAttributes();
+}
+
+function initAdminAttributesEventHandlers() {
+    if (adminAttributesHandlersInitialized) return;
+    adminAttributesHandlersInitialized = true;
+
+    const addBtn = document.getElementById('adminAddAttributeBtn');
+    if (addBtn) addBtn.addEventListener('click', () => showAdminAttributeForm(null));
+
+    const form = document.getElementById('adminAttributeForm');
+    if (form) form.addEventListener('submit', saveAdminAttribute);
+
+    const cancelBtn = document.getElementById('adminAttributeFormCancel');
+    if (cancelBtn) cancelBtn.addEventListener('click', hideAdminAttributeForm);
 }
 
 // === Корреляции: что влияет на срок ===

@@ -793,6 +793,92 @@ localStorage.setItem('supabaseKey', 'ваш-anon-key');</pre>
                     </div>
                 </div>
             </div>
+
+            <!-- Параметры изделий (гипотезы) -->
+            <div class="card" id="adminAttributesSection">
+                <div class="card-header">
+                    <h2>🔬 Параметры изделий (гипотезы)</h2>
+                    <div class="header-actions">
+                        <button class="btn btn-primary btn-small" id="adminAddAttributeBtn">+ Добавить параметр</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <p style="color:#888;font-size:0.85em;margin-bottom:12px;">
+                        Параметры собирают статистику при каждом сохранении заказа. Когда накопится достаточно данных — гипотеза подтверждается или опровергается в разделе "Анализ".
+                    </p>
+                    <div class="table-responsive">
+                        <table id="adminAttributesTable">
+                            <thead>
+                                <tr>
+                                    <th>Название</th>
+                                    <th>Варианты</th>
+                                    <th>Статус</th>
+                                    <th>Активен</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adminAttributesTableBody">
+                                <tr><td colspan="5" style="text-align:center;color:#aaa;">Загрузка...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Форма атрибута -->
+            <div class="card" id="adminAttributeFormCard" style="display:none;">
+                <div class="card-header">
+                    <h2 id="adminAttributeFormTitle">Новый параметр</h2>
+                </div>
+                <div class="card-body">
+                    <form id="adminAttributeForm">
+                        <input type="hidden" id="adminAttributeId">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="adminAttributeName">Название <span style="color:red">*</span></label>
+                                <input type="text" id="adminAttributeName" placeholder="Цвет изделия" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="adminAttributeCode">Код (латиницей) <span style="color:red">*</span></label>
+                                <input type="text" id="adminAttributeCode" placeholder="color_type" required>
+                                <small class="hint">Уникальный идентификатор, только латинские буквы и _</small>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="adminAttributeOptions">Варианты значений (через запятую)</label>
+                                <input type="text" id="adminAttributeOptions" placeholder="Светлый, Тёмный, Средний">
+                                <small class="hint">Оставьте пустым для свободного текста</small>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="adminAttributeDescription">Описание гипотезы</label>
+                                <input type="text" id="adminAttributeDescription" placeholder="Тёмные цвета требуют больше времени на полировку">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="adminAttributeIsHypothesis" checked>
+                                    Это гипотеза (🔬 требует подтверждения данными)
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="adminAttributeIsActive" checked>
+                                    Активен (показывать в формах заказа)
+                                </label>
+                            </div>
+                        </div>
+                        <div class="actions">
+                            <button type="submit" class="btn btn-primary">💾 Сохранить</button>
+                            <button type="button" class="btn btn-secondary" id="adminAttributeFormCancel">Отмена</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
         </section>
 
 <!-- Модальное окно администратора -->
