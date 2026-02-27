@@ -1476,9 +1476,10 @@ async function saveCalculation() {
             complexity_level: null, // пока не рассчитывается
             is_training_data: false,
             is_outlier: false,
-            stone_id: state.selectedStoneId || null,
-            status: 'draft'
+            stone_id: state.selectedStoneId || null
         };
+        // Статус 'draft' ставим только для новых заказов.
+        // Для существующих — upsert НЕ трогает status, сохраняя in_production/completed.
 
         console.log('[SAVE] Payload для orders:', orderPayload);
 
@@ -1497,11 +1498,12 @@ async function saveCalculation() {
 
         console.log('[SAVE] Заказ сохранён, order_id:', orderData.id);
 
-        // Записываем supabase_id и статус обратно в локальный расчёт
+        // Записываем supabase_id обратно в локальный расчёт.
+        // Статус не перезаписываем если уже выше 'draft' (не сбрасываем in_production).
         const localCalc = state.calculations.find(c => c.id === calculation.id);
         if (localCalc) {
             localCalc.supabase_id = orderData.id;
-            localCalc.status = 'draft';
+            if (!localCalc.status) localCalc.status = 'draft';
             saveToStorage();
         }
 
@@ -5103,12 +5105,14 @@ async function loadWorkshopLoad(targetDate) {
 
         // Фильтрация: заказ был активен на filterDate
         const filtered = (orders || []).filter(order => {
+            // Заказы в производстве — показываем всегда (даже без сессий)
+            if (order.status === 'in_production') return true;
+
             const sessions = order.order_execution || [];
             const starts = sessions.map(s => new Date(s.fact_start_at)).filter(Boolean);
             const minStart = starts.length ? new Date(Math.min(...starts)) : null;
             if (!minStart || minStart > filterDate) return false;
 
-            if (order.status === 'in_production') return true;
             if (order.completed_at && new Date(order.completed_at) >= filterDate) return true;
             return false;
         });
