@@ -984,6 +984,7 @@ async function initApp() {
     await initWorkLogFilters(); // Инициализация фильтров журнала работ
     initCompleteOrderSection(); // Инициализация секции завершения заказа
     initAttributesModalHandlers(); // Инициализация формы атрибутов изделия
+    initPdfModalHandlers(); // Инициализация PDF / КП
     updateUI();
     setDefaultDate();
 }
@@ -1922,6 +1923,7 @@ function updateSavedCalculationsList() {
             </div>
             <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
                 ${calcStatusBadge(calc.status)}
+                <button class="pdf-btn" data-id="${calc.id}" title="Сформировать PDF" style="background:none;border:none;font-size:1.2em;cursor:pointer;padding:2px 4px;">📄</button>
                 ${sendBtn}
                 <button class="delete-btn" data-id="${calc.id}">🗑️</button>
             </div>
@@ -1933,6 +1935,7 @@ function updateSavedCalculationsList() {
         item.addEventListener('click', (e) => {
             if (e.target.classList.contains('delete-btn')) return;
             if (e.target.classList.contains('send-to-production-btn')) return;
+            if (e.target.classList.contains('pdf-btn')) return;
             loadCalculation(parseInt(item.dataset.id));
             const modal = document.getElementById('loadModal');
             if (modal) modal.classList.remove('active');
@@ -1955,6 +1958,14 @@ function updateSavedCalculationsList() {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             sendToProduction(parseInt(btn.dataset.id));
+        });
+    });
+
+    // PDF
+    list.querySelectorAll('.pdf-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showPdfModal(parseInt(btn.dataset.id));
         });
     });
 }
@@ -5499,6 +5510,140 @@ function updateUI() {
     updateWorkLogTable();
     updateOrderSelects();
     updateAnalysis();
+}
+
+// === PDF / Коммерческое предложение ===
+
+let currentPdfCalcId = null;
+let pdfModalHandlersInitialized = false;
+
+function showPdfModal(calcId) {
+    currentPdfCalcId = calcId;
+    const calc = state.calculations.find(c => c.id === calcId);
+    if (!calc) return;
+
+    // Предзаполняем дату из расчёта
+    const dateEl = document.getElementById('pdfDate');
+    if (dateEl) dateEl.value = calc.orderDate || new Date().toISOString().slice(0, 10);
+
+    const modal = document.getElementById('pdfModal');
+    if (modal) modal.classList.add('active');
+}
+
+function closePdfModal() {
+    const modal = document.getElementById('pdfModal');
+    if (modal) modal.classList.remove('active');
+    currentPdfCalcId = null;
+}
+
+function generatePdf() {
+    const calc = state.calculations.find(c => c.id === currentPdfCalcId);
+    if (!calc) return;
+
+    const clientName    = document.getElementById('pdfClientName')?.value.trim() || '—';
+    const objectAddress = document.getElementById('pdfObjectAddress')?.value.trim() || '—';
+    const pdfDate       = document.getElementById('pdfDate')?.value || calc.orderDate || '';
+    const productType   = document.getElementById('pdfProductType')?.value || 'Столешница';
+
+    const sqm       = parseFloat(calc.operations?.[1]?.volume) || 0;
+    const edgeM     = parseFloat(calc.operations?.[4]?.volume) || 0;
+    const thickness = parseFloat(calc.operations?.[22]?.volume) || 0;
+    const extraWorks = Array.isArray(calc.extraWorks) ? calc.extraWorks : [];
+    const extraTotal = extraWorks.reduce((s, w) => s + (w.cost || 0), 0);
+    const productionCost = (calc.totalFinalCost || 0) - extraTotal;
+    const totalHours = ((calc.totalTime || 0) / 60).toFixed(1);
+
+    const formatNum = n => n.toLocaleString('ru-RU');
+    const fmtDate = d => {
+        if (!d) return '—';
+        const dt = new Date(d + 'T00:00:00');
+        return dt.toLocaleDateString('ru-RU');
+    };
+
+    const paramsRows = [
+        sqm > 0       ? `<tr><td>Площадь столешницы</td><td>${sqm} м²</td></tr>` : '',
+        edgeM > 0     ? `<tr><td>Кромки радиусные</td><td>${edgeM} м.п.</td></tr>` : '',
+        thickness > 0 ? `<tr><td>Толщина</td><td>${thickness} мм</td></tr>` : '',
+    ].filter(Boolean).join('');
+
+    const extraRows = extraWorks.map(w =>
+        `<tr><td>${w.name || 'Доп. работа'}</td><td style="text-align:right;">${formatNum(w.cost || 0)} ₽</td></tr>`
+    ).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>КП — ${calc.orderNumber}</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 13px; color: #222; margin: 20mm 20mm 15mm 20mm; }
+  h1 { font-size: 18px; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-bottom: 16px; }
+  h2 { font-size: 14px; color: #555; margin: 20px 0 8px; border-left: 3px solid #667eea; padding-left: 8px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+  td { padding: 5px 8px; vertical-align: top; }
+  td:first-child { color: #666; width: 45%; }
+  .params-table td { border-bottom: 1px solid #eee; }
+  .params-table td:last-child { font-weight: 600; text-align: right; }
+  .cost-table td { border-bottom: 1px solid #eee; }
+  .cost-table td:last-child { text-align: right; }
+  .total-row td { font-weight: bold; font-size: 15px; border-top: 2px solid #222; padding-top: 8px; }
+  .footer { margin-top: 30px; font-size: 11px; color: #999; }
+  @media print { @page { margin: 15mm; } body { margin: 0; } }
+</style>
+</head>
+<body>
+<h1>Коммерческое предложение</h1>
+
+<table>
+  <tr><td>Клиент:</td><td><strong>${clientName}</strong></td></tr>
+  <tr><td>Адрес объекта:</td><td>${objectAddress}</td></tr>
+  <tr><td>Дата:</td><td>${fmtDate(pdfDate)}</td></tr>
+  <tr><td>Номер расчёта:</td><td>${calc.orderNumber}</td></tr>
+  <tr><td>Тип изделия:</td><td>${productType}</td></tr>
+</table>
+
+${paramsRows ? `<h2>Параметры изделия</h2>
+<table class="params-table">${paramsRows}</table>` : ''}
+
+<h2>Стоимость</h2>
+<table class="cost-table">
+  <tr><td>Производство</td><td>${formatNum(productionCost)} ₽</td></tr>
+  ${extraRows}
+  <tr class="total-row"><td>ИТОГО</td><td>${formatNum(calc.totalFinalCost || 0)} ₽</td></tr>
+</table>
+
+<p style="margin-top:12px;color:#555;">Срок изготовления (расчётный): <strong>${totalHours} ч</strong></p>
+
+<p class="footer">Расчёт действителен в течение 14 дней с даты составления.<br>
+Окончательная стоимость уточняется при замере объекта.</p>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank');
+    if (!win) {
+        alert('Браузер заблокировал новое окно. Разрешите всплывающие окна для этого сайта.');
+        return;
+    }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    win.print();
+
+    closePdfModal();
+}
+
+function initPdfModalHandlers() {
+    if (pdfModalHandlersInitialized) return;
+    pdfModalHandlersInitialized = true;
+
+    const closeBtn = document.getElementById('closePdfModal');
+    if (closeBtn) closeBtn.addEventListener('click', closePdfModal);
+
+    const cancelBtn = document.getElementById('cancelPdfBtn');
+    if (cancelBtn) cancelBtn.addEventListener('click', closePdfModal);
+
+    const generateBtn = document.getElementById('generatePdfBtn');
+    if (generateBtn) generateBtn.addEventListener('click', generatePdf);
 }
 
 // === Форма атрибутов изделия (после сохранения расчёта) ===

@@ -174,7 +174,7 @@
                     </div>
                     <div class="actions">
                         <button class="btn btn-primary" id="saveCalculation">💾 Сохранить расчет</button>
-                        <button class="btn btn-secondary" id="loadCalculation">📂 Загрузить</button>
+                        <button class="btn btn-secondary" id="loadCalculation">📋 Все расчёты</button>
                     </div>
                 </div>
             </div>
@@ -939,7 +939,7 @@ localStorage.setItem('supabaseKey', 'ваш-anon-key');</pre>
         <div class="modal" id="loadModal">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h3>Сохраненные расчеты</h3>
+                    <h3>📋 Все расчёты</h3>
                     <button class="modal-close" id="closeModal">&times;</button>
                 </div>
                 <div class="modal-body">
@@ -993,6 +993,45 @@ localStorage.setItem('supabaseKey', 'ваш-anon-key');</pre>
                     <div class="actions" style="margin-top:20px;">
                         <button class="btn btn-primary" id="saveAttributesBtn">💾 Сохранить параметры</button>
                         <button class="btn btn-secondary" id="skipAttributesBtn">Пропустить</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Модальное окно PDF / Коммерческое предложение -->
+        <div class="modal" id="pdfModal">
+            <div class="modal-content" style="max-width:480px;">
+                <div class="modal-header">
+                    <h3>📄 Коммерческое предложение</h3>
+                    <button class="modal-close" id="closePdfModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p style="color:#666;font-size:0.9em;margin-bottom:16px;">Заполните данные клиента. В будущем подтянутся из Битрикс24 автоматически.</p>
+                    <div class="form-group">
+                        <label for="pdfClientName">Наименование организации / ФИО клиента</label>
+                        <input type="text" id="pdfClientName" placeholder="ООО «Компания» или Иванов И.И.">
+                    </div>
+                    <div class="form-group">
+                        <label for="pdfObjectAddress">Адрес объекта</label>
+                        <input type="text" id="pdfObjectAddress" placeholder="г. Москва, ул. Примерная, д. 1">
+                    </div>
+                    <div class="form-group">
+                        <label for="pdfDate">Дата просчёта</label>
+                        <input type="date" id="pdfDate">
+                    </div>
+                    <div class="form-group">
+                        <label for="pdfProductType">Тип изделия</label>
+                        <select id="pdfProductType">
+                            <option value="Столешница">Столешница</option>
+                            <option value="Подоконник">Подоконник</option>
+                            <option value="Барная стойка">Барная стойка</option>
+                            <option value="Полка">Полка</option>
+                            <option value="Другое">Другое</option>
+                        </select>
+                    </div>
+                    <div class="actions" style="margin-top:20px;">
+                        <button class="btn btn-primary" id="generatePdfBtn">🖨️ Сформировать PDF</button>
+                        <button class="btn btn-secondary" id="cancelPdfBtn">Отмена</button>
                     </div>
                 </div>
             </div>
