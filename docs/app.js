@@ -980,6 +980,7 @@ async function initApp() {
     initExportImport();
     await initAnalysisFilters(); // Инициализация фильтров анализа
     await initWorkLogFilters(); // Инициализация фильтров журнала работ
+    initCompleteOrderSection(); // Инициализация секции завершения заказа
     updateUI();
     setDefaultDate();
 }
@@ -1025,6 +1026,7 @@ function initTabs() {
 
             if (tabId === 'tracking') {
                 updateOrderSelects();
+                loadInProductionOrders();
             } else if (tabId === 'analysis') {
                 updateAnalysis();
             } else if (tabId === 'admin') {
@@ -1766,6 +1768,18 @@ async function syncWorkLogEntryToSupabase(entry) {
 
         console.log('[WORKLOG_SYNC] order_execution inserted, id:', executionData.id);
 
+        // Переводим заказ в статус 'in_production' если он ещё 'draft'
+        const { error: statusError } = await supabaseClient
+            .from('orders')
+            .update({ status: 'in_production' })
+            .eq('id', orderId)
+            .eq('status', 'draft');
+        if (statusError) {
+            console.warn('[WORKLOG_SYNC] Не удалось обновить статус заказа:', statusError.message);
+        } else {
+            console.log('[WORKLOG_SYNC] Статус заказа → in_production');
+        }
+
         // INSERT в pauses (если есть)
         if (entry.pauses && entry.pauses.length > 0) {
             const pausesPayload = entry.pauses.map(pause => {
@@ -1796,6 +1810,74 @@ async function syncWorkLogEntryToSupabase(entry) {
     } catch (err) {
         console.error('[WORKLOG_SYNC] Unexpected error', err);
     }
+}
+
+// === Завершение заказа ===
+
+async function loadInProductionOrders() {
+    const select = document.getElementById('completeOrderSelect');
+    if (!select) return;
+
+    select.innerHTML = '<option value="">— выберите заказ —</option>';
+
+    if (!isSupabaseConfigured()) return;
+
+    try {
+        const { data, error } = await withRetry(() =>
+            supabaseClient
+                .from('orders')
+                .select('id, order_number')
+                .eq('status', 'in_production')
+                .order('created_at', { ascending: false })
+        );
+        if (error || !data) return;
+        data.forEach(order => {
+            const opt = document.createElement('option');
+            opt.value = order.id;
+            opt.textContent = order.order_number;
+            select.appendChild(opt);
+        });
+    } catch (err) {
+        console.error('[COMPLETE_ORDER] Ошибка загрузки заказов:', err);
+    }
+}
+
+async function completeOrder() {
+    const select = document.getElementById('completeOrderSelect');
+    if (!select || !select.value) {
+        alert('Выберите заказ для завершения');
+        return;
+    }
+    const orderId = select.value;
+    const orderName = select.options[select.selectedIndex].text;
+
+    if (!confirm(`Завершить заказ "${orderName}"?\n\nЗаказ будет отмечен как выполненный.`)) return;
+
+    try {
+        const { error } = await withRetry(() =>
+            supabaseClient
+                .from('orders')
+                .update({ status: 'completed', completed_at: new Date().toISOString() })
+                .eq('id', orderId)
+        );
+        if (error) {
+            alert('Ошибка при завершении заказа: ' + error.message);
+            return;
+        }
+        alert(`Заказ "${orderName}" завершён ✅`);
+        await loadInProductionOrders();
+    } catch (err) {
+        console.error('[COMPLETE_ORDER] Ошибка:', err);
+        alert('Ошибка соединения. Попробуйте ещё раз.');
+    }
+}
+
+function initCompleteOrderSection() {
+    const btn = document.getElementById('completeOrderBtn');
+    if (btn) {
+        btn.addEventListener('click', completeOrder);
+    }
+    loadInProductionOrders();
 }
 
 function updateSavedCalculationsList() {
