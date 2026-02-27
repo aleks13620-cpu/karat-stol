@@ -979,6 +979,24 @@ localStorage.setItem('supabaseKey', 'ваш-anon-key');</pre>
                 </div>
             </div>
         </div>
+
+        <!-- Модальное окно атрибутов изделия -->
+        <div class="modal" id="attributesModal">
+            <div class="modal-content" style="max-width:500px;">
+                <div class="modal-header">
+                    <h3>🔬 Параметры изделия</h3>
+                    <button class="modal-close" id="closeAttributesModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p style="color:#666;margin-bottom:16px;font-size:0.9em;">Укажите параметры изделия для сбора статистики. Можно пропустить.</p>
+                    <div id="attributesFormFields"></div>
+                    <div class="actions" style="margin-top:20px;">
+                        <button class="btn btn-primary" id="saveAttributesBtn">💾 Сохранить параметры</button>
+                        <button class="btn btn-secondary" id="skipAttributesBtn">Пропустить</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 <!-- Подключение Supabase -->
 <script src="supabase.min.js"></script>

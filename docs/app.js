@@ -983,6 +983,7 @@ async function initApp() {
     initCorrelation();  // Инициализация корреляционного анализа
     await initWorkLogFilters(); // Инициализация фильтров журнала работ
     initCompleteOrderSection(); // Инициализация секции завершения заказа
+    initAttributesModalHandlers(); // Инициализация формы атрибутов изделия
     updateUI();
     setDefaultDate();
 }
@@ -1474,7 +1475,8 @@ async function saveCalculation() {
             complexity_level: null, // пока не рассчитывается
             is_training_data: false,
             is_outlier: false,
-            stone_id: state.selectedStoneId || null
+            stone_id: state.selectedStoneId || null,
+            status: 'draft'
         };
 
         console.log('[SAVE] Payload для orders:', orderPayload);
@@ -1493,6 +1495,14 @@ async function saveCalculation() {
         }
 
         console.log('[SAVE] Заказ сохранён, order_id:', orderData.id);
+
+        // Записываем supabase_id и статус обратно в локальный расчёт
+        const localCalc = state.calculations.find(c => c.id === calculation.id);
+        if (localCalc) {
+            localCalc.supabase_id = orderData.id;
+            localCalc.status = 'draft';
+            saveToStorage();
+        }
 
         // 3. Формируем payload для таблицы order_parameters
         // Извлекаем значения операций из state.operationValues
@@ -1582,7 +1592,8 @@ async function saveCalculation() {
             console.log('[SAVE] Нет выбранных операций моек для сохранения');
         }
 
-        alert('Расчёт успешно сохранён в базу данных!');
+        console.log('[SAVE] Расчёт успешно сохранён, order_id:', orderData.id);
+        await openAttributesModal(orderData.id);
 
     } catch (err) {
         console.error('[SAVE] Ошибка при сохранении в Supabase:', err);
@@ -1884,6 +1895,12 @@ function initCompleteOrderSection() {
     loadInProductionOrders();
 }
 
+function calcStatusBadge(status) {
+    if (status === 'in_production') return '<span style="font-size:0.8em;color:#27ae60;white-space:nowrap;">🏭 В работе</span>';
+    if (status === 'completed')    return '<span style="font-size:0.8em;color:#888;white-space:nowrap;">✅ Завершён</span>';
+    return '<span style="font-size:0.8em;color:#aaa;white-space:nowrap;">📝 Черновик</span>';
+}
+
 function updateSavedCalculationsList() {
     const list = document.getElementById('savedCalculationsList');
     if (!list) return;
@@ -1893,25 +1910,32 @@ function updateSavedCalculationsList() {
         return;
     }
 
-    list.innerHTML = state.calculations.map(calc => `
+    list.innerHTML = state.calculations.map(calc => {
+        const sendBtn = (calc.supabase_id && calc.status === 'draft')
+            ? `<button class="send-to-production-btn" data-id="${calc.id}" title="Передать в производство" style="background:none;border:none;font-size:1.2em;cursor:pointer;padding:2px 4px;">🏭</button>`
+            : '';
+        return `
         <div class="saved-calculation-item" data-id="${calc.id}">
             <div class="info">
                 <h4>${calc.orderNumber}</h4>
                 <small>${formatDate(calc.orderDate)} | ${calc.totalTime} мин | ${formatCurrency(calc.totalFinalCost)} ₽</small>
             </div>
-            <button class="delete-btn" data-id="${calc.id}">🗑️</button>
-        </div>
-    `).join('');
+            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+                ${calcStatusBadge(calc.status)}
+                ${sendBtn}
+                <button class="delete-btn" data-id="${calc.id}">🗑️</button>
+            </div>
+        </div>`;
+    }).join('');
 
     // Загрузка расчета
     list.querySelectorAll('.saved-calculation-item').forEach(item => {
         item.addEventListener('click', (e) => {
             if (e.target.classList.contains('delete-btn')) return;
+            if (e.target.classList.contains('send-to-production-btn')) return;
             loadCalculation(parseInt(item.dataset.id));
             const modal = document.getElementById('loadModal');
-            if (modal) {
-                modal.classList.remove('active');
-            }
+            if (modal) modal.classList.remove('active');
         });
     });
 
@@ -1925,6 +1949,43 @@ function updateSavedCalculationsList() {
             }
         });
     });
+
+    // Передать в производство
+    list.querySelectorAll('.send-to-production-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            sendToProduction(parseInt(btn.dataset.id));
+        });
+    });
+}
+
+async function sendToProduction(calcId) {
+    const calc = state.calculations.find(c => c.id === calcId);
+    if (!calc) return;
+
+    if (!calc.supabase_id) {
+        alert('Сначала сохраните расчёт в базу данных.');
+        return;
+    }
+
+    if (!confirm(`Передать заказ "${calc.orderNumber}" в производство?`)) return;
+
+    const { error } = await withRetry(() =>
+        supabaseClient
+            .from('orders')
+            .update({ status: 'in_production' })
+            .eq('id', calc.supabase_id)
+    );
+
+    if (error) {
+        alert('Ошибка передачи в производство: ' + error.message);
+        return;
+    }
+
+    calc.status = 'in_production';
+    saveToStorage();
+    updateSavedCalculationsList();
+    alert(`Заказ "${calc.orderNumber}" передан в производство!`);
 }
 
 function loadCalculation(id) {
@@ -4870,6 +4931,18 @@ async function loadCorrelationData() {
         if (ql) orderActual[exec.order_id].quals.push(ql);
     });
 
+    // Загружаем значения атрибутов для завершённых заказов
+    const { data: orderAttrs } = await withRetry(() =>
+        supabaseClient.from('order_attributes')
+            .select('order_id, attribute_id, value_text, value_number')
+            .in('order_id', orderIds)
+    );
+    const attrMap = {};
+    (orderAttrs || []).forEach(oa => {
+        if (!attrMap[oa.order_id]) attrMap[oa.order_id] = {};
+        attrMap[oa.order_id][oa.attribute_id] = oa.value_text ?? oa.value_number;
+    });
+
     return orders.map(order => {
         const actual = orderActual[order.id];
         if (!actual || actual.min <= 0) return null;
@@ -4880,12 +4953,14 @@ async function loadCorrelationData() {
             ? Math.round(actual.quals.reduce((a, b) => a + b, 0) / actual.quals.length)
             : null;
         return {
+            id:        order.id,
             sqm:       parseFloat(params.countertop_sqm) || 0,
             sinks:     (params.sink_round_pcs || 0) + (params.sink_rect_pcs || 0),
             qualLevel: avgQual,
             actualMin: Math.round(actual.min),
             theoryMin,
-            deviation: parseFloat(((actual.min - theoryMin) / theoryMin * 100).toFixed(1))
+            deviation:  parseFloat(((actual.min - theoryMin) / theoryMin * 100).toFixed(1)),
+            attrValues: attrMap[order.id] || {}
         };
     }).filter(Boolean);
 }
@@ -4964,6 +5039,21 @@ async function updateCorrelation() {
     html += renderCorrelationSection('📐 По площади столешницы', sqmGroups);
     html += renderCorrelationSection('🚰 По количеству моек', sinkGroups);
     if (qualGroups.length) html += renderCorrelationSection('👷 По квалификации мастера', qualGroups);
+
+    // Динамические атрибуты изделий (гипотезы и подтверждённые факты)
+    const attrDefs = await loadActiveAttributes();
+    for (const attrDef of attrDefs) {
+        const attrData = data.filter(d =>
+            d.attrValues[attrDef.id] !== undefined && d.attrValues[attrDef.id] !== null && d.attrValues[attrDef.id] !== ''
+        );
+        if (attrData.length < 5) continue; // Недостаточно данных
+
+        const badge = attrDef.is_hypothesis ? '🔬 Гипотеза:' : '✅ Подтверждено:';
+        const labelMap = {};
+        attrData.forEach(d => { const v = String(d.attrValues[attrDef.id]); labelMap[v] = v; });
+        const attrGroups = correlationGroupBy(attrData, d => String(d.attrValues[attrDef.id]), labelMap);
+        if (attrGroups.length) html += renderCorrelationSection(`${badge} ${attrDef.name}`, attrGroups);
+    }
 
     content.innerHTML = html;
 }
@@ -5409,4 +5499,139 @@ function updateUI() {
     updateWorkLogTable();
     updateOrderSelects();
     updateAnalysis();
+}
+
+// === Форма атрибутов изделия (после сохранения расчёта) ===
+
+let activeAttributesList = [];
+let currentAttributesOrderId = null;
+let attributesModalHandlersInitialized = false;
+
+async function loadActiveAttributes() {
+    if (!supabaseClient) return [];
+    const { data, error } = await withRetry(() =>
+        supabaseClient.from('order_attribute_definitions')
+            .select('*')
+            .eq('is_active', true)
+            .order('created_at')
+    );
+    if (error) { console.error('[ATTRS] Ошибка загрузки атрибутов:', error); return []; }
+    return data || [];
+}
+
+async function openAttributesModal(orderId) {
+    if (!supabaseClient) return false;
+    currentAttributesOrderId = orderId;
+    activeAttributesList = await loadActiveAttributes();
+
+    if (!activeAttributesList.length) {
+        alert('Расчёт успешно сохранён в базу данных!');
+        return false;
+    }
+
+    // Загружаем уже сохранённые значения (для повторного редактирования)
+    let existingValues = {};
+    const { data: existing } = await supabaseClient
+        .from('order_attributes')
+        .select('attribute_id, value_text, value_number')
+        .eq('order_id', orderId);
+    if (existing) {
+        existing.forEach(v => { existingValues[v.attribute_id] = v; });
+    }
+
+    const fieldsDiv = document.getElementById('attributesFormFields');
+    if (!fieldsDiv) return false;
+
+    fieldsDiv.innerHTML = activeAttributesList.map(attr => {
+        const existing = existingValues[attr.id];
+        const badge = attr.is_hypothesis
+            ? '<span style="font-size:0.8em;color:#e67e22;margin-left:6px;">🔬</span>'
+            : '<span style="font-size:0.8em;color:#27ae60;margin-left:6px;">✅</span>';
+
+        let inputHtml = '';
+        if (attr.value_type === 'select') {
+            const options = Array.isArray(attr.options) ? attr.options : JSON.parse(attr.options || '[]');
+            const currentVal = existing?.value_text || '';
+            inputHtml = `<select class="attr-input" data-attr-id="${attr.id}" data-type="select">
+                <option value="">— не указано —</option>
+                ${options.map(o => `<option value="${o}"${currentVal === o ? ' selected' : ''}>${o}</option>`).join('')}
+            </select>`;
+        } else if (attr.value_type === 'number') {
+            const currentVal = existing?.value_number ?? '';
+            inputHtml = `<input type="number" class="attr-input" data-attr-id="${attr.id}" data-type="number" value="${currentVal}" step="0.01" placeholder="Введите число">`;
+        } else {
+            const currentVal = existing?.value_text || '';
+            inputHtml = `<input type="text" class="attr-input" data-attr-id="${attr.id}" data-type="text" value="${currentVal}" placeholder="Введите значение">`;
+        }
+
+        return `<div class="form-group">
+            <label>${attr.name}${badge}</label>
+            ${inputHtml}
+        </div>`;
+    }).join('');
+
+    const modal = document.getElementById('attributesModal');
+    if (modal) modal.classList.add('active');
+    return true;
+}
+
+async function saveOrderAttributes() {
+    if (!supabaseClient || !currentAttributesOrderId) {
+        closeAttributesModal();
+        return;
+    }
+
+    const inputs = document.querySelectorAll('#attributesFormFields .attr-input');
+    const payload = [];
+    inputs.forEach(input => {
+        const attrId = input.dataset.attrId;
+        const type = input.dataset.type;
+        const val = input.value;
+        if (!val) return; // пропускаем пустые
+        payload.push({
+            order_id: currentAttributesOrderId,
+            attribute_id: attrId,
+            value_text: (type === 'select' || type === 'text') ? val : null,
+            value_number: type === 'number' ? parseFloat(val) : null
+        });
+    });
+
+    if (payload.length > 0) {
+        const { error } = await withRetry(() =>
+            supabaseClient.from('order_attributes')
+                .upsert(payload, { onConflict: 'order_id,attribute_id' })
+        );
+        if (error) {
+            console.error('[ATTRS] Ошибка сохранения атрибутов:', error);
+            alert('Ошибка сохранения параметров изделия: ' + error.message);
+            return;
+        }
+        console.log('[ATTRS] Атрибуты сохранены:', payload.length, 'значений');
+    }
+
+    closeAttributesModal();
+    alert('Расчёт и параметры изделия сохранены!');
+}
+
+function closeAttributesModal() {
+    const modal = document.getElementById('attributesModal');
+    if (modal) modal.classList.remove('active');
+    currentAttributesOrderId = null;
+}
+
+function initAttributesModalHandlers() {
+    if (attributesModalHandlersInitialized) return;
+    attributesModalHandlersInitialized = true;
+
+    const closeBtn = document.getElementById('closeAttributesModal');
+    if (closeBtn) closeBtn.addEventListener('click', closeAttributesModal);
+
+    const skipBtn = document.getElementById('skipAttributesBtn');
+    if (skipBtn) skipBtn.addEventListener('click', () => {
+        closeAttributesModal();
+        alert('Расчёт успешно сохранён в базу данных!');
+    });
+
+    const saveBtn = document.getElementById('saveAttributesBtn');
+    if (saveBtn) saveBtn.addEventListener('click', saveOrderAttributes);
 }
