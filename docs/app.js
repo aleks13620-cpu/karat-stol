@@ -979,6 +979,7 @@ async function initApp() {
     initModalControls();
     initExportImport();
     await initAnalysisFilters(); // Инициализация фильтров анализа
+    initWorkshopLoad(); // Инициализация нагрузки цеха
     await initWorkLogFilters(); // Инициализация фильтров журнала работ
     initCompleteOrderSection(); // Инициализация секции завершения заказа
     updateUI();
@@ -1029,6 +1030,7 @@ function initTabs() {
                 loadInProductionOrders();
             } else if (tabId === 'analysis') {
                 updateAnalysis();
+                loadWorkshopLoad(null);
             } else if (tabId === 'admin') {
                 initAdminPanel();
             } else if (tabId === 'worklog') {
@@ -4668,6 +4670,191 @@ function renderOrderAnalysisTable(orderAnalysisData) {
     });
 
     tbody.innerHTML = rows.join('');
+}
+
+// === Нагрузка цеха ===
+
+async function loadWorkshopLoad(targetDate) {
+    const tbody = document.getElementById('workshopLoadTable');
+    if (!tbody) return;
+
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#888;">Загрузка...</td></tr>';
+
+    if (!isSupabaseConfigured()) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#c0392b;">Supabase не настроен</td></tr>';
+        return;
+    }
+
+    try {
+        // Загружаем заказы с параметрами и сессиями
+        const { data: orders, error } = await withRetry(() =>
+            supabaseClient
+                .from('orders')
+                .select(`
+                    id, order_number, status, completed_at, created_at,
+                    order_parameters (countertop_sqm, sink_round_pcs, sink_rect_pcs),
+                    order_execution (fact_start_at)
+                `)
+                .in('status', ['in_production', 'completed'])
+        );
+
+        if (error) throw error;
+
+        const today = new Date();
+        today.setHours(23, 59, 59, 999);
+        const filterDate = targetDate ? new Date(targetDate + 'T23:59:59') : today;
+
+        // Фильтрация: заказ был активен на filterDate
+        const filtered = (orders || []).filter(order => {
+            const sessions = order.order_execution || [];
+            const starts = sessions.map(s => new Date(s.fact_start_at)).filter(Boolean);
+            const minStart = starts.length ? new Date(Math.min(...starts)) : null;
+            if (!minStart || minStart > filterDate) return false;
+
+            if (order.status === 'in_production') return true;
+            if (order.completed_at && new Date(order.completed_at) >= filterDate) return true;
+            return false;
+        });
+
+        renderWorkshopLoad(filtered, filterDate);
+        updateWorkshopSummary(orders || []);
+        buildWorkshopChart(orders || []);
+
+    } catch (err) {
+        console.error('[WORKSHOP] Ошибка:', err);
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#c0392b;">Ошибка загрузки данных</td></tr>';
+    }
+}
+
+function renderWorkshopLoad(orders, filterDate) {
+    const tbody = document.getElementById('workshopLoadTable');
+    if (!tbody) return;
+
+    if (!orders.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#888;">Нет заказов на выбранную дату</td></tr>';
+        return;
+    }
+
+    const now = filterDate || new Date();
+    tbody.innerHTML = orders.map(order => {
+        const sessions = order.order_execution || [];
+        const starts = sessions.map(s => new Date(s.fact_start_at)).filter(Boolean);
+        const minStart = starts.length ? new Date(Math.min(...starts)) : null;
+
+        const startStr = minStart ? minStart.toLocaleDateString('ru-RU') : '—';
+        const endDate = order.completed_at ? new Date(order.completed_at) : now;
+        const daysInWork = minStart ? Math.max(1, Math.round((endDate - minStart) / 86400000)) : '—';
+
+        const params = order.order_parameters || {};
+        const sqm = params.countertop_sqm ? parseFloat(params.countertop_sqm).toFixed(1) : '—';
+        const sinks = (params.sink_round_pcs || 0) + (params.sink_rect_pcs || 0);
+
+        const statusBadge = order.status === 'in_production'
+            ? '<span style="color:#1a7a1a;font-weight:600;">В работе</span>'
+            : '<span style="color:#888;">Завершён</span>';
+
+        return `<tr>
+            <td>${order.order_number}</td>
+            <td>${startStr}</td>
+            <td>${daysInWork}</td>
+            <td>${sqm}</td>
+            <td>${sinks || '—'}</td>
+            <td>${statusBadge}</td>
+        </tr>`;
+    }).join('');
+}
+
+function updateWorkshopSummary(allOrders) {
+    const inProd = allOrders.filter(o => o.status === 'in_production');
+    const completed = allOrders.filter(o => o.status === 'completed');
+
+    // Средний срок по завершённым
+    let avgDays = '—';
+    if (completed.length) {
+        const durations = completed.map(order => {
+            const sessions = order.order_execution || [];
+            const starts = sessions.map(s => new Date(s.fact_start_at)).filter(Boolean);
+            const minStart = starts.length ? new Date(Math.min(...starts)) : null;
+            const endDate = order.completed_at ? new Date(order.completed_at) : null;
+            if (minStart && endDate) return Math.max(1, Math.round((endDate - minStart) / 86400000));
+            return null;
+        }).filter(Boolean);
+        if (durations.length) avgDays = (durations.reduce((a, b) => a + b, 0) / durations.length).toFixed(1);
+    }
+
+    const el = id => document.getElementById(id);
+    if (el('workshopCurrentCount')) el('workshopCurrentCount').textContent = inProd.length;
+    if (el('workshopCompletedCount')) el('workshopCompletedCount').textContent = completed.length;
+    if (el('workshopAvgDays')) el('workshopAvgDays').textContent = avgDays;
+}
+
+function buildWorkshopChart(allOrders) {
+    const chartDiv = document.getElementById('workshopChart');
+    const labelsDiv = document.getElementById('workshopChartLabels');
+    const section = document.getElementById('workshopChartSection');
+    if (!chartDiv || !allOrders.length) return;
+
+    // Строим массив дат за последние 30 дней
+    const days = [];
+    for (let i = 29; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        d.setHours(23, 59, 59, 999);
+        days.push(d);
+    }
+
+    // Для каждого дня считаем кол-во активных заказов
+    const counts = days.map(day => {
+        return allOrders.filter(order => {
+            const sessions = order.order_execution || [];
+            const starts = sessions.map(s => new Date(s.fact_start_at)).filter(Boolean);
+            const minStart = starts.length ? new Date(Math.min(...starts)) : null;
+            if (!minStart || minStart > day) return false;
+            if (order.status === 'in_production') return true;
+            if (order.completed_at && new Date(order.completed_at) >= day) return true;
+            return false;
+        }).length;
+    });
+
+    const maxCount = Math.max(...counts, 1);
+    chartDiv.innerHTML = counts.map((count, i) => {
+        const heightPct = Math.round((count / maxCount) * 100);
+        const isToday = i === 29;
+        const color = isToday ? '#0066cc' : '#a8c8f0';
+        return `<div title="${days[i].toLocaleDateString('ru-RU')}: ${count} заказ(ов)"
+            style="flex:1; height:${Math.max(heightPct, 2)}%; background:${color}; border-radius:2px 2px 0 0; min-height:2px; cursor:default;"></div>`;
+    }).join('');
+
+    // Подписи: каждые 5 дней
+    labelsDiv.innerHTML = days.map((d, i) =>
+        (i % 5 === 0 || i === 29)
+            ? `<span style="display:inline-block;width:${100/30*5}%;font-size:0.7em">${d.toLocaleDateString('ru-RU', {day:'numeric',month:'short'})}</span>`
+            : ''
+    ).join('');
+
+    section.style.display = 'block';
+}
+
+function initWorkshopLoad() {
+    const showBtn = document.getElementById('workshopShowBtn');
+    const todayBtn = document.getElementById('workshopTodayBtn');
+    const dateInput = document.getElementById('workshopDateFilter');
+
+    if (dateInput) {
+        dateInput.value = new Date().toISOString().split('T')[0];
+    }
+    if (showBtn) {
+        showBtn.addEventListener('click', () => {
+            const val = dateInput ? dateInput.value : '';
+            loadWorkshopLoad(val || null);
+        });
+    }
+    if (todayBtn) {
+        todayBtn.addEventListener('click', () => {
+            if (dateInput) dateInput.value = new Date().toISOString().split('T')[0];
+            loadWorkshopLoad(null);
+        });
+    }
 }
 
 // === Анализ ===
